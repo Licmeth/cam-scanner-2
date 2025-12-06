@@ -38,10 +38,13 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     companion object {
         private const val TAG = "MainActivity"
         private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
-        )
+        private val REQUIRED_PERMISSIONS = mutableListOf(
+            Manifest.permission.CAMERA
+        ).apply {
+            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
+                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }.toTypedArray()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -307,20 +310,43 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 fun ImageProxy.toBitmap(): Bitmap {
     val image = this.image ?: throw IllegalStateException("Image is null")
     
-    val yBuffer = image.planes[0].buffer
-    val uBuffer = image.planes[1].buffer
-    val vBuffer = image.planes[2].buffer
+    val planes = image.planes
+    val yBuffer = planes[0].buffer
+    val uBuffer = planes[1].buffer
+    val vBuffer = planes[2].buffer
 
     val ySize = yBuffer.remaining()
     val uSize = uBuffer.remaining()
     val vSize = vBuffer.remaining()
 
     val nv21 = ByteArray(ySize + uSize + vSize)
-
-    // U and V are swapped
+    
+    // Copy Y plane
     yBuffer.get(nv21, 0, ySize)
-    vBuffer.get(nv21, ySize, vSize)
-    uBuffer.get(nv21, ySize + vSize, uSize)
+    
+    // Copy UV planes - handle interleaved data properly
+    val uvPixelStride = planes[1].pixelStride
+    val uvRowStride = planes[1].rowStride
+    
+    if (uvPixelStride == 1) {
+        // UV planes are contiguous
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+    } else {
+        // UV planes are interleaved - need to separate them
+        val uvWidth = this.width / 2
+        val uvHeight = this.height / 2
+        
+        var pos = ySize
+        for (row in 0 until uvHeight) {
+            for (col in 0 until uvWidth) {
+                val vIndex = row * uvRowStride + col * uvPixelStride
+                val uIndex = row * uvRowStride + col * uvPixelStride
+                nv21[pos++] = vBuffer.get(vIndex)
+                nv21[pos++] = uBuffer.get(uIndex)
+            }
+        }
+    }
 
     val yuvImage = android.graphics.YuvImage(
         nv21,

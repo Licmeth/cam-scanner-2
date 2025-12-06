@@ -47,11 +47,17 @@ class DocumentPreviewActivity : AppCompatActivity() {
     private fun saveToPdf() {
         currentBitmap?.let { bitmap ->
             try {
-                // Create output directory
-                val documentsDir = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-                    "CamScanner"
-                )
+                // Create output directory in app-specific external storage
+                val documentsDir = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    // For Android 10+, use app-specific external storage
+                    File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "CamScanner")
+                } else {
+                    // For older versions, use public documents directory
+                    File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                        "CamScanner"
+                    )
+                }
                 
                 if (!documentsDir.exists()) {
                     documentsDir.mkdirs()
