@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
@@ -51,7 +50,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         super.onCreate(savedInstanceState)
         
         // Initialize OpenCV
-        if (!OpenCVLoader.initDebug()) {
+        if (!OpenCVLoader.initLocal()) {
             Log.e(TAG, "OpenCV initialization failed")
             Toast.makeText(this, "OpenCV initialization failed", Toast.LENGTH_LONG).show()
             finish()
@@ -144,7 +143,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             val preview = Preview.Builder()
                 .build()
                 .also {
-                    it.setSurfaceProvider(binding.previewView.surfaceProvider)
+                    it.surfaceProvider = binding.previewView.surfaceProvider
                 }
 
             // Image capture
@@ -306,59 +305,59 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     }
 }
 
-// Extension function to convert ImageProxy to Bitmap
-@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-fun ImageProxy.toBitmap(): Bitmap {
-    val image = this.image ?: throw IllegalStateException("Image is null")
-    
-    val planes = image.planes
-    val yBuffer = planes[0].buffer
-    val uBuffer = planes[1].buffer
-    val vBuffer = planes[2].buffer
-
-    val ySize = yBuffer.remaining()
-    val uSize = uBuffer.remaining()
-    val vSize = vBuffer.remaining()
-
-    val nv21 = ByteArray(ySize + uSize + vSize)
-    
-    // Copy Y plane
-    yBuffer.get(nv21, 0, ySize)
-    
-    // NV21 format is Y plane followed by VU interleaved
-    // Copy UV planes properly
-    val uvPixelStride = planes[1].pixelStride
-    
-    if (uvPixelStride == 1) {
-        // Planes are contiguous - simple copy in VU order for NV21
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-    } else {
-        // Planes are interleaved - need to deinterleave for NV21
-        val uvWidth = this.width / 2
-        val uvHeight = this.height / 2
-        val vRowStride = planes[2].rowStride
-        val uRowStride = planes[1].rowStride
-        
-        var pos = ySize
-        for (row in 0 until uvHeight) {
-            for (col in 0 until uvWidth) {
-                // NV21 is YYYYYY VU VU VU
-                nv21[pos++] = vBuffer.get(row * vRowStride + col * uvPixelStride)
-                nv21[pos++] = uBuffer.get(row * uRowStride + col * uvPixelStride)
-            }
-        }
-    }
-
-    val yuvImage = android.graphics.YuvImage(
-        nv21,
-        android.graphics.ImageFormat.NV21,
-        this.width,
-        this.height,
-        null
-    )
-    val out = java.io.ByteArrayOutputStream()
-    yuvImage.compressToJpeg(android.graphics.Rect(0, 0, this.width, this.height), 100, out)
-    val imageBytes = out.toByteArray()
-    return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-}
+//// Extension function to convert ImageProxy to Bitmap
+//@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
+//fun ImageProxy.toBitmap(): Bitmap {
+//    val image = this.image ?: throw IllegalStateException("Image is null")
+//
+//    val planes = image.planes
+//    val yBuffer = planes[0].buffer
+//    val uBuffer = planes[1].buffer
+//    val vBuffer = planes[2].buffer
+//
+//    val ySize = yBuffer.remaining()
+//    val uSize = uBuffer.remaining()
+//    val vSize = vBuffer.remaining()
+//
+//    val nv21 = ByteArray(ySize + uSize + vSize)
+//
+//    // Copy Y plane
+//    yBuffer.get(nv21, 0, ySize)
+//
+//    // NV21 format is Y plane followed by VU interleaved
+//    // Copy UV planes properly
+//    val uvPixelStride = planes[1].pixelStride
+//
+//    if (uvPixelStride == 1) {
+//        // Planes are contiguous - simple copy in VU order for NV21
+//        vBuffer.get(nv21, ySize, vSize)
+//        uBuffer.get(nv21, ySize + vSize, uSize)
+//    } else {
+//        // Planes are interleaved - need to deinterleave for NV21
+//        val uvWidth = this.width / 2
+//        val uvHeight = this.height / 2
+//        val vRowStride = planes[2].rowStride
+//        val uRowStride = planes[1].rowStride
+//
+//        var pos = ySize
+//        for (row in 0 until uvHeight) {
+//            for (col in 0 until uvWidth) {
+//                // NV21 is YYYYYY VU VU VU
+//                nv21[pos++] = vBuffer.get(row * vRowStride + col * uvPixelStride)
+//                nv21[pos++] = uBuffer.get(row * uRowStride + col * uvPixelStride)
+//            }
+//        }
+//    }
+//
+//    val yuvImage = android.graphics.YuvImage(
+//        nv21,
+//        android.graphics.ImageFormat.NV21,
+//        this.width,
+//        this.height,
+//        null
+//    )
+//    val out = java.io.ByteArrayOutputStream()
+//    yuvImage.compressToJpeg(android.graphics.Rect(0, 0, this.width, this.height), 100, out)
+//    val imageBytes = out.toByteArray()
+//    return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+//}
