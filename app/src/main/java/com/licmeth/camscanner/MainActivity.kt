@@ -307,6 +307,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 }
 
 // Extension function to convert ImageProxy to Bitmap
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 fun ImageProxy.toBitmap(): Bitmap {
     val image = this.image ?: throw IllegalStateException("Image is null")
     
@@ -324,26 +325,27 @@ fun ImageProxy.toBitmap(): Bitmap {
     // Copy Y plane
     yBuffer.get(nv21, 0, ySize)
     
-    // Copy UV planes - handle interleaved data properly
+    // NV21 format is Y plane followed by VU interleaved
+    // Copy UV planes properly
     val uvPixelStride = planes[1].pixelStride
-    val uvRowStride = planes[1].rowStride
     
     if (uvPixelStride == 1) {
-        // UV planes are contiguous
+        // Planes are contiguous - simple copy in VU order for NV21
         vBuffer.get(nv21, ySize, vSize)
         uBuffer.get(nv21, ySize + vSize, uSize)
     } else {
-        // UV planes are interleaved - need to separate them
+        // Planes are interleaved - need to deinterleave for NV21
         val uvWidth = this.width / 2
         val uvHeight = this.height / 2
+        val vRowStride = planes[2].rowStride
+        val uRowStride = planes[1].rowStride
         
         var pos = ySize
         for (row in 0 until uvHeight) {
             for (col in 0 until uvWidth) {
-                val vIndex = row * uvRowStride + col * uvPixelStride
-                val uIndex = row * uvRowStride + col * uvPixelStride
-                nv21[pos++] = vBuffer.get(vIndex)
-                nv21[pos++] = uBuffer.get(uIndex)
+                // NV21 is YYYYYY VU VU VU
+                nv21[pos++] = vBuffer.get(row * vRowStride + col * uvPixelStride)
+                nv21[pos++] = uBuffer.get(row * uRowStride + col * uvPixelStride)
             }
         }
     }
