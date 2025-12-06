@@ -11,15 +11,6 @@ object DocumentScanner {
     
     private const val TAG = "DocumentScanner"
 
-    init {
-        try {
-            System.loadLibrary("opencv_java4")
-            Log.d(TAG, "OpenCV loaded successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading OpenCV: ${e.message}")
-        }
-    }
-
     fun detectDocument(bitmap: Bitmap): Array<Point>? {
         try {
             val mat = Mat()
