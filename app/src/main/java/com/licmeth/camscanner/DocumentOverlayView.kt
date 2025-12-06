@@ -28,21 +28,15 @@ class DocumentOverlayView @JvmOverloads constructor(
         isAntiAlias = true
     }
 
+    private val cornerPaint = Paint(paint).apply {
+        style = Paint.Style.FILL
+    }
+
     private var documentCorners: Array<Point>? = null
-    private var isDocumentDetected = false
+    private var path: Path = Path()
 
     fun setDocumentCorners(corners: Array<Point>?) {
         documentCorners = corners
-        isDocumentDetected = corners != null && corners.size == 4
-        
-        if (isDocumentDetected) {
-            paint.color = Color.GREEN
-            fillPaint.color = Color.argb(50, 0, 255, 0)
-        } else {
-            paint.color = Color.RED
-            fillPaint.color = Color.argb(50, 255, 0, 0)
-        }
-        
         invalidate()
     }
 
@@ -50,34 +44,33 @@ class DocumentOverlayView @JvmOverloads constructor(
         super.onDraw(canvas)
 
         documentCorners?.let { corners ->
-            if (corners.size == 4) {
-                val path = Path()
-                
-                // Convert OpenCV points to screen coordinates
-                val screenCorners = corners.map { point ->
-                    Pair(point.x.toFloat(), point.y.toFloat())
-                }
+            if (corners.size != 4) {
+                return
+            }
 
-                path.moveTo(screenCorners[0].first, screenCorners[0].second)
-                for (i in 1 until 4) {
-                    path.lineTo(screenCorners[i].first, screenCorners[i].second)
-                }
-                path.close()
+            // Clear previous path
+            path.reset()
 
-                // Draw filled area
-                canvas.drawPath(path, fillPaint)
-                
-                // Draw border
-                canvas.drawPath(path, paint)
+            // Convert OpenCV points to screen coordinates
+            val screenCorners = corners.map { point ->
+                Pair(point.x.toFloat(), point.y.toFloat())
+            }
 
-                // Draw corner circles
-                val circlePaint = Paint(paint).apply {
-                    style = Paint.Style.FILL
-                }
-                
-                screenCorners.forEach { (x, y) ->
-                    canvas.drawCircle(x, y, 15f, circlePaint)
-                }
+            path.moveTo(screenCorners[0].first, screenCorners[0].second)
+            for (i in 1 until 4) {
+                path.lineTo(screenCorners[i].first, screenCorners[i].second)
+            }
+            path.close()
+
+            // Draw filled area
+            canvas.drawPath(path, fillPaint)
+
+            // Draw border
+            canvas.drawPath(path, paint)
+
+            // Draw corner circles
+            screenCorners.forEach { (x, y) ->
+                canvas.drawCircle(x, y, 15f, cornerPaint)
             }
         }
     }
