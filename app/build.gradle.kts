@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.licmeth.camscanner"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.licmeth.camscanner"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -28,12 +28,8 @@ android {
     }
     
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-    
-    kotlinOptions {
-        jvmTarget = "1.8"
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     buildFeatures {
@@ -54,7 +50,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.0")
     
     // OpenCV
-    implementation("org.opencv:opencv:4.8.0")
+    implementation("org.opencv:opencv:4.12.0")
     
     // PDF generation
     implementation("com.itextpdf:itext7-core:7.2.5")
