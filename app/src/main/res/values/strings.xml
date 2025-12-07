@@ -11,8 +11,11 @@
     <string name="document_saved">Document saved successfully</string>
     <string name="error_saving_document">Error saving document</string>
     <string name="no_document_detected">No document detected. Please adjust the camera.</string>
-    <string name="detecting_document">Detecting document...</string>
+    <string name="detecting_document">Detecting document…</string>
     <string name="document_detected">Document detected!</string>
+    <string name="show_debug_overlay">Show debug overlay</string>
+    <string name="debug_overlay_on">Debug overlay enabled</string>
+    <string name="debug_overlay_off">Debug overlay hidden</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="about">About</string>

@@ -17,6 +17,15 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
+        <ImageView
+            android:id="@+id/debug_image_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitCenter"
+            android:contentDescription="@string/show_debug_overlay" />
+<!--            tools:src="@drawable/ic_launcher_background" />-->
+
+
         <com.licmeth.camscanner.DocumentOverlayView
             android:id="@+id/overlay_view"
             android:layout_width="match_parent"
@@ -39,6 +48,15 @@
                 android:textColor="@color/white"
                 android:textSize="16sp"
                 android:layout_marginBottom="16dp" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/debug_overlay_switch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="@string/show_debug_overlay"
+                android:textColor="@color/white"
+                android:layout_marginBottom="12dp" />
 
             <Button
                 android:id="@+id/capture_button"

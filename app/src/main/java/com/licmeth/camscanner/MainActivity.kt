@@ -4,9 +4,11 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.ImageFormat
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.ActionBarDrawerToggle
@@ -24,6 +26,7 @@ import org.opencv.android.OpenCVLoader
 import org.opencv.core.Point
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import androidx.core.graphics.set
 
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
@@ -32,10 +35,13 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
     private lateinit var drawerLayout: DrawerLayout
     private var imageCapture: ImageCapture? = null
     private var detectedCorners: Array<Point>? = null
+    private var showDebugOverlay: Boolean = false
+    private var lastDebugBitmap: Bitmap? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val KEY_SHOW_DEBUG_OVERLAY = "key_show_debug_overlay"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = mutableListOf(
             Manifest.permission.CAMERA
@@ -61,6 +67,25 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+//        // Use the COMPATIBLE implementation (TextureView) so overlays (debug ImageView) are drawn above the preview.
+//        // SurfaceView-based preview can appear on top of regular views on some devices which causes flicker.
+//        try {
+//            binding.previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+//        } catch (t: Throwable) {
+//            // Ignore if not supported on very old camera-view versions
+//            Log.w(TAG, "Could not set PreviewView implementation mode: ${t.message}")
+//        }
+
+        showDebugOverlay = savedInstanceState?.getBoolean(KEY_SHOW_DEBUG_OVERLAY, false) == true
+
+        binding.debugOverlaySwitch.isChecked = showDebugOverlay
+        binding.debugImageView.visibility = View.GONE
+//        // Prefer a hardware layer for the debug image to reduce composition flicker when toggling.
+//        binding.debugImageView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        binding.debugOverlaySwitch.setOnCheckedChangeListener { _, isChecked ->
+            toggleDebugOverlay(isChecked)
+        }
 
         // Setup drawer
         drawerLayout = binding.drawerLayout
@@ -109,6 +134,14 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_SHOW_DEBUG_OVERLAY, showDebugOverlay)
+    }
+
+    /**
+     * Check if all required permissions are granted
+     */
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
@@ -133,6 +166,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
     }
 
+    /**
+     * Start the camera and bind use cases
+     */
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
@@ -186,19 +222,22 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     private fun processImage(imageProxy: ImageProxy) {
         try {
-            val bitmap = imageProxy.toBitmap()
-            
+            //todo: rotate according to imageProxy.imageInfo.rotationDegrees if needed
+            val image = DocumentScanner.toGrayScaleMat(imageProxy)
             // Detect document in background
             coroutineScope.launch(Dispatchers.Default) {
-                val corners = DocumentScanner.detectDocument(bitmap)
+                val scannerResult = DocumentScanner.detectDocument(image, DocumentScanner.OutputStage.EDGES_DETECTED)
+                val corners = scannerResult.corners
+                val debugBitmap = scannerResult.debugOutput
                 
                 withContext(Dispatchers.Main) {
                     detectedCorners = corners
+                    handleDebugOutput(debugBitmap)
                     
                     if (corners != null) {
                         // Scale corners to preview view dimensions
-                        val scaleX = binding.previewView.width.toFloat() / bitmap.width
-                        val scaleY = binding.previewView.height.toFloat() / bitmap.height
+                        val scaleX = binding.previewView.width.toFloat() / imageProxy.width
+                        val scaleY = binding.previewView.height.toFloat() / imageProxy.height
                         
                         val scaledCorners = corners.map { point ->
                             Point(point.x * scaleX, point.y * scaleY)
@@ -220,6 +259,46 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         } finally {
             imageProxy.close()
         }
+    }
+
+    private fun toggleDebugOverlay(enabled: Boolean) {
+        showDebugOverlay = enabled
+        if (!enabled) {
+            clearDebugOverlay()
+        }
+
+        val message = if (enabled) {
+            R.string.debug_overlay_on
+        } else {
+            R.string.debug_overlay_off
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun handleDebugOutput(debugBitmap: Bitmap?) {
+        if (!showDebugOverlay || debugBitmap == null) {
+            // Recycle any provided temporary debug bitmap
+            debugBitmap?.recycle()
+
+            clearDebugOverlay()
+            return
+        }
+
+        // Show debug output: replace last bitmap, ensure debug view is on top and preview is transparent
+        lastDebugBitmap?.recycle()
+        lastDebugBitmap = debugBitmap
+
+        binding.debugImageView.setImageBitmap(lastDebugBitmap)
+        binding.debugImageView.visibility = View.VISIBLE
+        binding.previewView.visibility = View.GONE
+    }
+
+    private fun clearDebugOverlay() {
+        lastDebugBitmap?.recycle()
+        lastDebugBitmap = null
+        binding.debugImageView.setImageDrawable(null)
+        binding.debugImageView.visibility = View.GONE
+        binding.previewView.visibility = View.VISIBLE
     }
 
     private fun captureDocument() {
@@ -300,64 +379,8 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     override fun onDestroy() {
         super.onDestroy()
+        clearDebugOverlay()
         cameraExecutor.shutdown()
         coroutineScope.cancel()
     }
 }
-
-//// Extension function to convert ImageProxy to Bitmap
-//@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-//fun ImageProxy.toBitmap(): Bitmap {
-//    val image = this.image ?: throw IllegalStateException("Image is null")
-//
-//    val planes = image.planes
-//    val yBuffer = planes[0].buffer
-//    val uBuffer = planes[1].buffer
-//    val vBuffer = planes[2].buffer
-//
-//    val ySize = yBuffer.remaining()
-//    val uSize = uBuffer.remaining()
-//    val vSize = vBuffer.remaining()
-//
-//    val nv21 = ByteArray(ySize + uSize + vSize)
-//
-//    // Copy Y plane
-//    yBuffer.get(nv21, 0, ySize)
-//
-//    // NV21 format is Y plane followed by VU interleaved
-//    // Copy UV planes properly
-//    val uvPixelStride = planes[1].pixelStride
-//
-//    if (uvPixelStride == 1) {
-//        // Planes are contiguous - simple copy in VU order for NV21
-//        vBuffer.get(nv21, ySize, vSize)
-//        uBuffer.get(nv21, ySize + vSize, uSize)
-//    } else {
-//        // Planes are interleaved - need to deinterleave for NV21
-//        val uvWidth = this.width / 2
-//        val uvHeight = this.height / 2
-//        val vRowStride = planes[2].rowStride
-//        val uRowStride = planes[1].rowStride
-//
-//        var pos = ySize
-//        for (row in 0 until uvHeight) {
-//            for (col in 0 until uvWidth) {
-//                // NV21 is YYYYYY VU VU VU
-//                nv21[pos++] = vBuffer.get(row * vRowStride + col * uvPixelStride)
-//                nv21[pos++] = uBuffer.get(row * uRowStride + col * uvPixelStride)
-//            }
-//        }
-//    }
-//
-//    val yuvImage = android.graphics.YuvImage(
-//        nv21,
-//        android.graphics.ImageFormat.NV21,
-//        this.width,
-//        this.height,
-//        null
-//    )
-//    val out = java.io.ByteArrayOutputStream()
-//    yuvImage.compressToJpeg(android.graphics.Rect(0, 0, this.width, this.height), 100, out)
-//    val imageBytes = out.toByteArray()
-//    return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-//}

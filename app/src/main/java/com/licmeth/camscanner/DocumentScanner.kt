@@ -2,16 +2,251 @@ package com.licmeth.camscanner
 
 import android.graphics.Bitmap
 import android.util.Log
+import androidx.annotation.OptIn
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageProxy
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
+import kotlin.collections.MutableList
 import kotlin.math.sqrt
+import androidx.core.graphics.createBitmap
+
+data class DocumentScannerResult(
+    val corners: Array<Point>?,
+    val debugOutput: Bitmap?
+)
 
 object DocumentScanner {
+
+    enum class OutputStage(val value: Int) {
+        NONE(-1),
+        PREPROCESSED(0),
+        CONTENT_REMOVED(1),
+        EDGES_DETECTED(2),
+        CONTOURS_DETECTED(3),
+        CORNERS_DETECTED(4)
+    }
     
     private const val TAG = "DocumentScanner"
 
-    fun detectDocument(bitmap: Bitmap): Array<Point>? {
+    private const val MAX_IMAGE_DIMENSION = 1080
+    private const val TWO_PERCENT: Double = 0.02
+    private const val MORPH_KERNEL_SIZE: Double = 10.0
+    private const val MORPH_ITERATIONS: Int = 3
+    private const val GAUSSIAN_BLUR_SIGMA_X: Double = 0.0
+    private const val GAUSSIAN_BLUR_KERNEL_DIMENSION: Double = 11.0
+    private const val EDGE_DILATE_KERNEL_SIZE: Double = 2.0
+    private const val CANNY_LOWER_HYSTERESIS_THRESHOLD: Double = 30.0
+    private const val CANNY_UPPER_HYSTERESIS_THRESHOLD: Double = 150.0
+    private const val CONTOUR_SELECTION_COUNT: Int = 5
+
+    private val morphKernel: Mat = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(MORPH_KERNEL_SIZE, MORPH_KERNEL_SIZE))
+    private val morphAnchor: Point = Point(-1.0, -1.0) // Anchor point for the morphological kernel
+    private val dilateKernel: Mat = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(EDGE_DILATE_KERNEL_SIZE, EDGE_DILATE_KERNEL_SIZE))
+    private val gaussianBlurKernelSize: Size = Size(GAUSSIAN_BLUR_KERNEL_DIMENSION, GAUSSIAN_BLUR_KERNEL_DIMENSION)
+
+    fun detectDocument(grayscaleImage: Mat, debugOutputStage: OutputStage): DocumentScannerResult {
+        try {
+            var debugOutput: Bitmap? = null
+            val processingMat = preprocessInput(grayscaleImage)
+            if (debugOutputStage == OutputStage.PREPROCESSED) {
+                debugOutput = createBitmap(processingMat.cols(), processingMat.rows())
+                Utils.matToBitmap(processingMat, debugOutput)
+            }
+
+            removeDocumentContent(processingMat)
+            if (debugOutputStage == OutputStage.CONTENT_REMOVED) {
+                debugOutput = createBitmap(processingMat.cols(), processingMat.rows())
+                Utils.matToBitmap(processingMat, debugOutput)
+            }
+
+            edgeDetection(processingMat)
+            if (debugOutputStage == OutputStage.EDGES_DETECTED) {
+                debugOutput = createBitmap(processingMat.cols(), processingMat.rows())
+                Utils.matToBitmap(processingMat, debugOutput)
+            }
+
+            val corners = findDocumentCorners(processingMat)
+
+            //todo need to scale output corners back to original image size if scaling was applied
+
+
+            // Release resources
+            processingMat.release()
+
+            return DocumentScannerResult(corners, debugOutput)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting document: ${e.message}")
+            e.printStackTrace()
+        }
+
+        return DocumentScannerResult(null, null)
+    }
+
+    /**
+     * Preprocesses the input image by converting it to grayscale and resizing if necessary.
+     *
+     * @param image The input Bitmap image.
+     * @return The preprocessed image Mat.
+     */
+    @OptIn(ExperimentalGetImage::class)
+    private fun preprocessInput(image: Mat): Mat {
+        // Resize if needed
+        if (isNeedsScaling(image)) {
+            val processingMat = createProcessingMat(image)
+            Imgproc.resize(
+                image,
+                processingMat,
+                processingMat.size(),
+                0.0,
+                0.0,
+                Imgproc.INTER_AREA)
+            image.release()
+            return processingMat
+        } else {
+            return image
+        }
+    }
+
+    @OptIn(ExperimentalGetImage::class)
+    fun toGrayScaleMat(imageProxy: ImageProxy): Mat {
+        val image = imageProxy.image ?: throw IllegalArgumentException("Image is null")
+
+        if (image.format != android.graphics.ImageFormat.YUV_420_888) {
+            throw IllegalArgumentException("Unsupported image format: ${image.format}")
+        }
+
+        val yBuffer = image.planes[0].buffer
+
+        // Y plane is already greyscale
+        yBuffer.rewind()
+        val ySize = yBuffer.remaining()
+        val yBytes = ByteArray(ySize)
+        yBuffer.get(yBytes, 0, ySize)
+
+        val mat = Mat(image.height, image.width, CvType.CV_8UC1)
+        mat.put(0, 0, yBytes)
+
+        // Rotate the image if needed
+        when (imageProxy.imageInfo.rotationDegrees) {
+            90 -> Core.rotate(mat, mat, Core.ROTATE_90_CLOCKWISE)
+            //180 -> Core.rotate(mat, mat, Core.ROTATE_180)
+            270 -> Core.rotate(mat, mat, Core.ROTATE_90_COUNTERCLOCKWISE)
+        }
+
+        return mat
+    }
+
+    /**
+     * Checks if the image needs to be scaled down based on maximum allowed dimensions.
+     *
+     * @param image The input image Mat.
+     * @return True if scaling is needed, false otherwise.
+     */
+    private fun isNeedsScaling(image: Mat): Boolean {
+        return image.width() > MAX_IMAGE_DIMENSION || image.height() > MAX_IMAGE_DIMENSION
+    }
+
+    /**
+     * Creates a Mat for processing with dimensions matching the maximum allowed size. If scaling is
+     * needed, the aspect ratio is preserved.
+     *
+     * @param image The input image Mat.
+     * @return A new Mat sized for processing.
+     */
+    private fun createProcessingMat(image: Mat): Mat {
+        if(!isNeedsScaling(image)) {
+            return Mat.zeros(image.size(), CvType.CV_8UC1)
+        }
+
+        val scale: Double
+
+        if (image.width() >= image.height()) {
+            scale = MAX_IMAGE_DIMENSION.toDouble() / image.width().toDouble()
+            return Mat.zeros((image.height() * scale).toInt(), MAX_IMAGE_DIMENSION, CvType.CV_8UC1)
+        } else {
+            scale = MAX_IMAGE_DIMENSION.toDouble() / image.height().toDouble()
+            return Mat.zeros(MAX_IMAGE_DIMENSION, (image.width() * scale).toInt(), CvType.CV_8UC1)
+        }
+    }
+
+    /**
+     * Removes the content of the document by applying morphological closing.
+     */
+    private fun removeDocumentContent(processingMat: Mat) {
+        Imgproc.morphologyEx(processingMat, processingMat, Imgproc.MORPH_CLOSE, morphKernel, morphAnchor, MORPH_ITERATIONS)
+    }
+
+    private fun edgeDetection(processingMat: Mat) {
+        Imgproc.GaussianBlur(processingMat, processingMat, gaussianBlurKernelSize, GAUSSIAN_BLUR_SIGMA_X)
+        Imgproc.Canny(processingMat, processingMat, CANNY_LOWER_HYSTERESIS_THRESHOLD, CANNY_UPPER_HYSTERESIS_THRESHOLD)
+        //Imgproc.dilate(processingMat, processingMat, DILATE_KERNEL)
+    }
+
+    /**
+     * Finds the corners of the document in the processed image.
+     *
+     * @param processingMat The preprocessed image Mat.
+     * @return An array of points containing the corners of the document, or null if not found.
+     */
+    private fun findDocumentCorners(processingMat: Mat): Array<Point>? {
+        val contours: MutableList<MatOfPoint> = mutableListOf()
+        val hierarchy = Mat()
+
+        Imgproc.findContours(processingMat, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_NONE)
+
+        if (contours.isEmpty()) {
+            return null
+        }
+
+        contours.sortByDescending { Imgproc.contourArea(it) }
+
+        return detectDocumentCorners(contours, CONTOUR_SELECTION_COUNT)
+    }
+
+    /**
+     * Detects the document corners from the list of contours.
+     *
+     * @param contours The list of detected contours, ordered by area.
+     * @param limit The maximum number of contours to check.
+     * @return An array of points containing the corners of the document, or null if not found.
+     */
+    private fun detectDocumentCorners(contours: List<MatOfPoint>, limit: Int): Array<Point>? {
+        var i = 0
+        val contour = MatOfPoint2f()
+        val simplifiedContour = MatOfPoint2f()
+        var points: Array<Point>? = null
+
+        while (i < contours.size && i < limit) {
+            contours[i].convertTo(contour, CvType.CV_32F)
+
+            val epsilon = TWO_PERCENT * Imgproc.arcLength(contour, true)
+            Imgproc.approxPolyDP(contour, simplifiedContour, epsilon, true)
+
+            // if the approximated contour has 4 points, we found the document
+            if (simplifiedContour.total() == 4L) {
+                points = simplifiedContour.toArray()
+                break
+            }
+
+            i++
+        }
+
+        contour.release()
+        simplifiedContour.release()
+        contours.forEach { it.release() }
+
+        if (points != null) {
+            return points
+        }
+
+        return null
+    }
+
+
+    fun detectDocumentOld(bitmap: Bitmap): Array<Point>? {
         try {
             val mat = Mat()
             Utils.bitmapToMat(bitmap, mat)
