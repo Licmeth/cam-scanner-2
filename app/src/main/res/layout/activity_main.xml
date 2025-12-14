@@ -15,15 +15,15 @@
         <androidx.camera.view.PreviewView
             android:id="@+id/preview_view"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop" />
 
         <ImageView
             android:id="@+id/debug_image_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="fitCenter"
+            android:scaleType="centerCrop"
             android:contentDescription="@string/show_debug_overlay" />
-<!--            tools:src="@drawable/ic_launcher_background" />-->
 
 
         <com.licmeth.camscanner.DocumentOverlayView

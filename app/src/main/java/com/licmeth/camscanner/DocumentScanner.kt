@@ -182,7 +182,7 @@ object DocumentScanner {
     private fun edgeDetection(processingMat: Mat) {
         Imgproc.GaussianBlur(processingMat, processingMat, gaussianBlurKernelSize, GAUSSIAN_BLUR_SIGMA_X)
         Imgproc.Canny(processingMat, processingMat, CANNY_LOWER_HYSTERESIS_THRESHOLD, CANNY_UPPER_HYSTERESIS_THRESHOLD)
-        //Imgproc.dilate(processingMat, processingMat, DILATE_KERNEL)
+        Imgproc.dilate(processingMat, processingMat, dilateKernel)
     }
 
     /**

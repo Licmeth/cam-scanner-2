@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.ImageFormat
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
@@ -26,7 +25,6 @@ import org.opencv.android.OpenCVLoader
 import org.opencv.core.Point
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import androidx.core.graphics.set
 
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
 
@@ -68,21 +66,10 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-//        // Use the COMPATIBLE implementation (TextureView) so overlays (debug ImageView) are drawn above the preview.
-//        // SurfaceView-based preview can appear on top of regular views on some devices which causes flicker.
-//        try {
-//            binding.previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-//        } catch (t: Throwable) {
-//            // Ignore if not supported on very old camera-view versions
-//            Log.w(TAG, "Could not set PreviewView implementation mode: ${t.message}")
-//        }
-
         showDebugOverlay = savedInstanceState?.getBoolean(KEY_SHOW_DEBUG_OVERLAY, false) == true
 
         binding.debugOverlaySwitch.isChecked = showDebugOverlay
         binding.debugImageView.visibility = View.GONE
-//        // Prefer a hardware layer for the debug image to reduce composition flicker when toggling.
-//        binding.debugImageView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         binding.debugOverlaySwitch.setOnCheckedChangeListener { _, isChecked ->
             toggleDebugOverlay(isChecked)
         }
@@ -226,6 +213,8 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             val image = DocumentScanner.toGrayScaleMat(imageProxy)
             // Detect document in background
             coroutineScope.launch(Dispatchers.Default) {
+                val cameraImageHeigth = image.height()
+                val cameraImageWidth = image.width()
                 val scannerResult = DocumentScanner.detectDocument(image, DocumentScanner.OutputStage.EDGES_DETECTED)
                 val corners = scannerResult.corners
                 val debugBitmap = scannerResult.debugOutput
@@ -235,14 +224,43 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                     handleDebugOutput(debugBitmap)
                     
                     if (corners != null) {
-                        // Scale corners to preview view dimensions
-                        val scaleX = binding.previewView.width.toFloat() / imageProxy.width
-                        val scaleY = binding.previewView.height.toFloat() / imageProxy.height
-                        
+                        // Determine factor to scale corners to preview view dimensions
+                        val screenAspectRatio = binding.previewView.width.toFloat() / binding.previewView.height
+                        val cameraAspectRatio = cameraImageWidth / cameraImageHeigth
+                        val scale: Float
+                        if(cameraAspectRatio <= screenAspectRatio) {
+                            // camera picture is "wider" that screen picture
+                            // to fill the screen, the camera picture needs to be scaled by height
+                            // areas on the left and right of the camera picture are cropped to fill the screen
+                            scale = binding.previewView.height.toFloat() / cameraImageHeigth
+                        } else {
+                            // camera picture is "higher" that screen picture
+                            // to fill the screen, the camera picture needs to be scaled by width
+                            // areas on the top and bottom of the camera picture are cropped to fill the screen
+                            scale = binding.previewView.width.toFloat() / cameraImageWidth
+                        }
+
+                        // Determine offsets to shift points to match position of the preview.
+                        var shiftX = 0F
+                        var shiftY = 0F
+                        if (cameraAspectRatio < screenAspectRatio) {
+                            // camera picture is "wider" that screen picture
+                            // areas on the left and right of the camera picture are cropped to fill the screen
+                            val overWidth = cameraImageWidth * scale - binding.previewView.width
+                            shiftX = overWidth / 2
+                        }
+
+                        if (cameraAspectRatio > screenAspectRatio) {
+                            // camera picture is "higher" that screen picture
+                            // areas on the top and bottom of the camera picture are cropped to fill the screen
+                            val overHeight = cameraImageHeigth * scale - binding.previewView.height
+                            shiftY = overHeight / 2
+                        }
+
                         val scaledCorners = corners.map { point ->
-                            Point(point.x * scaleX, point.y * scaleY)
+                            Point(point.x * scale -shiftX, point.y * scale -shiftY)
                         }.toTypedArray()
-                        
+
                         binding.overlayView.setDocumentCorners(scaledCorners)
                         binding.statusText.text = getString(R.string.document_detected)
                         binding.captureButton.isEnabled = true
