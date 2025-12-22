@@ -209,35 +209,49 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     private fun processImage(imageProxy: ImageProxy) {
         try {
-            //todo: rotate according to imageProxy.imageInfo.rotationDegrees if needed
             val image = DocumentScanner.toGrayScaleMat(imageProxy)
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            var cameraImageHeight = imageProxy.height
+            var cameraImageWidth = imageProxy.width
+
             // Detect document in background
             coroutineScope.launch(Dispatchers.Default) {
-                val cameraImageHeigth = image.height()
-                val cameraImageWidth = image.width()
                 val scannerResult = DocumentScanner.detectDocument(image, DocumentScanner.OutputStage.EDGES_DETECTED)
-                val corners = scannerResult.corners
+                var corners = scannerResult.corners
                 val debugBitmap = scannerResult.debugOutput
-                
+
                 withContext(Dispatchers.Main) {
-                    detectedCorners = corners
-                    handleDebugOutput(debugBitmap)
+                    handleDebugOutput(debugBitmap?.let { bitmap ->
+                        DocumentScanner.rotateBitmap(bitmap, rotation.toFloat())
+                    })
                     
                     if (corners != null) {
+                        // Save detected corners normalized to [0,1] for use in capture
+                        detectedCorners = corners
+
+                        // Apply rotation
+                        if (rotation == 90 || rotation == 180) {
+                            // Swap width and height
+                            val temp = cameraImageWidth
+                            cameraImageWidth = cameraImageHeight
+                            cameraImageHeight = temp
+
+                            corners = DocumentScanner.rotateCorners(corners, DocumentScanner.RotationType.of(rotation))
+                        }
+
                         // Determine factor to scale corners to preview view dimensions
                         val screenAspectRatio = binding.previewView.width.toFloat() / binding.previewView.height
-                        val cameraAspectRatio = cameraImageWidth / cameraImageHeigth
-                        val scale: Float
-                        if(cameraAspectRatio <= screenAspectRatio) {
+                        val cameraAspectRatio = cameraImageWidth / cameraImageHeight
+                        val scale =  if(cameraAspectRatio <= screenAspectRatio) {
                             // camera picture is "wider" that screen picture
                             // to fill the screen, the camera picture needs to be scaled by height
                             // areas on the left and right of the camera picture are cropped to fill the screen
-                            scale = binding.previewView.height.toFloat() / cameraImageHeigth
+                            binding.previewView.height.toFloat() / cameraImageHeight
                         } else {
                             // camera picture is "higher" that screen picture
                             // to fill the screen, the camera picture needs to be scaled by width
                             // areas on the top and bottom of the camera picture are cropped to fill the screen
-                            scale = binding.previewView.width.toFloat() / cameraImageWidth
+                            binding.previewView.width.toFloat() / cameraImageWidth
                         }
 
                         // Determine offsets to shift points to match position of the preview.
@@ -253,12 +267,12 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                         if (cameraAspectRatio > screenAspectRatio) {
                             // camera picture is "higher" that screen picture
                             // areas on the top and bottom of the camera picture are cropped to fill the screen
-                            val overHeight = cameraImageHeigth * scale - binding.previewView.height
+                            val overHeight = cameraImageHeight * scale - binding.previewView.height
                             shiftY = overHeight / 2
                         }
 
                         val scaledCorners = corners.map { point ->
-                            Point(point.x * scale -shiftX, point.y * scale -shiftY)
+                            Point(point.x * cameraImageWidth * scale -shiftX, point.y * cameraImageHeight * scale -shiftY)
                         }.toTypedArray()
 
                         binding.overlayView.setDocumentCorners(scaledCorners)
@@ -326,12 +340,27 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
             ContextCompat.getMainExecutor(this),
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
-                    val bitmap = image.toBitmap()
+                    var bitmap = image.toBitmap()
+                    val rotationDegrees = image.imageInfo.rotationDegrees
                     image.close()
 
                     // Transform and crop the document
                     coroutineScope.launch(Dispatchers.Default) {
-                        detectedCorners?.let { corners ->
+                        detectedCorners?.let { relative_corners ->
+                            // Rotate image, if needed
+                            var corners = relative_corners
+                            if (rotationDegrees == 90 || rotationDegrees == 270) {
+                                bitmap = DocumentScanner.rotateBitmap(bitmap, rotationDegrees.toFloat())
+                                corners = DocumentScanner.rotateCorners(corners, DocumentScanner.RotationType.of(rotationDegrees))
+                            }
+
+                            // Calculate absolute corner positions in captured image
+                            val imageWidth = bitmap.width
+                            val imageHeight = bitmap.height
+                            corners = corners.map { point ->
+                                Point(point.x * imageWidth, point.y * imageHeight)
+                            }.toTypedArray()
+
                             val transformedBitmap = DocumentScanner.transformDocument(bitmap, corners)
                             
                             withContext(Dispatchers.Main) {

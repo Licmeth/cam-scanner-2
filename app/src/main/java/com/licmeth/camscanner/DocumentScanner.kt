@@ -1,6 +1,7 @@
 package com.licmeth.camscanner
 
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.camera.core.ExperimentalGetImage
@@ -18,6 +19,23 @@ data class DocumentScannerResult(
 )
 
 object DocumentScanner {
+
+    enum class RotationType(val value: Int) {
+        ORIGINAL(0),
+        CLOCKWISE(90),
+        UP_SIDE_DOWN(180),
+        ANTI_CLOCKWISE(270);
+
+        companion object {
+            private val VALUE_MAP: Map<Int, RotationType> =
+                RotationType.entries.associateBy { it.value }
+
+            /** Returns matching RotationType or throws if not found */
+            fun of(value: Int): RotationType =
+                VALUE_MAP[value]
+                    ?: throw IllegalArgumentException("Unsupported rotation value: $value")
+        }
+    }
 
     enum class OutputStage(val value: Int) {
         NONE(-1),
@@ -46,6 +64,15 @@ object DocumentScanner {
     private val dilateKernel: Mat = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(EDGE_DILATE_KERNEL_SIZE, EDGE_DILATE_KERNEL_SIZE))
     private val gaussianBlurKernelSize: Size = Size(GAUSSIAN_BLUR_KERNEL_DIMENSION, GAUSSIAN_BLUR_KERNEL_DIMENSION)
 
+    /**
+     * Detects the document in the given grayscale image and returns the corners and optional debug output.
+     *
+     * The corners are returned in normalized coordinates [0,1] relative to the image dimensions.
+     *
+     * @param grayscaleImage The input grayscale image as an OpenCV Mat.
+     * @param debugOutputStage The stage at which to output the debug image.
+     * @return A DocumentScannerResult containing the detected corners and optional debug output image.
+     */
     fun detectDocument(grayscaleImage: Mat, debugOutputStage: OutputStage): DocumentScannerResult {
         try {
             var debugOutput: Bitmap? = null
@@ -69,13 +96,21 @@ object DocumentScanner {
 
             val corners = findDocumentCorners(processingMat)
 
-            //todo need to scale output corners back to original image size if scaling was applied
+            corners?: return DocumentScannerResult(null, debugOutput)
 
+            // Sort coners in consistent order: top-left, top-right, bottom-right, bottom-left
+            val sortedCorners = orderPoints(corners)
+
+            // Normalize corner positions to [0,1] range
+            sortedCorners.forEach {
+                it.x = it.x / processingMat.width().toDouble()
+                it.y = it.y / processingMat.height().toDouble()
+            }
 
             // Release resources
             processingMat.release()
 
-            return DocumentScannerResult(corners, debugOutput)
+            return DocumentScannerResult(sortedCorners, debugOutput)
 
         } catch (e: Exception) {
             Log.e(TAG, "Error detecting document: ${e.message}")
@@ -130,11 +165,11 @@ object DocumentScanner {
         mat.put(0, 0, yBytes)
 
         // Rotate the image if needed
-        when (imageProxy.imageInfo.rotationDegrees) {
-            90 -> Core.rotate(mat, mat, Core.ROTATE_90_CLOCKWISE)
-            //180 -> Core.rotate(mat, mat, Core.ROTATE_180)
-            270 -> Core.rotate(mat, mat, Core.ROTATE_90_COUNTERCLOCKWISE)
-        }
+//        when (imageProxy.imageInfo.rotationDegrees) {
+//            90 -> Core.rotate(mat, mat, Core.ROTATE_90_CLOCKWISE)
+//            //180 -> Core.rotate(mat, mat, Core.ROTATE_180)
+//            270 -> Core.rotate(mat, mat, Core.ROTATE_90_COUNTERCLOCKWISE)
+//        }
 
         return mat
     }
@@ -415,5 +450,63 @@ object DocumentScanner {
         val dx = p2.x - p1.x
         val dy = p2.y - p1.y
         return sqrt(dx * dx + dy * dy)
+    }
+
+    fun rotateBitmap(src: Bitmap, angle: Float): Bitmap {
+        val matrix = Matrix().apply { postRotate(angle) }
+        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
+    }
+
+    /**
+     * Rotates the given corner points according to the given rotation type.
+     *
+     * The method assumes an ordered corner array: top-left, top-right, bottom-right, bottom-left
+     */
+    fun rotateCorners(src: Array<Point>, rotation: RotationType): Array<Point> {
+        if (src.size != 4) {
+            throw IllegalArgumentException("Unsupported number of corner points: ${src.size}")
+        }
+
+        // name the corners
+        val A = 0 // top-left
+        val B = 1 // top-right
+        val C = 2 // bottom-right
+        val D = 3 // bottom-left
+
+        if (rotation == RotationType.ORIGINAL) {
+            return src
+        }
+
+        if (rotation == RotationType.CLOCKWISE) {
+            //  A B  --> D A
+            //  D C  --> C B
+            val topLeft = Point(1.0-src[D].y, src[D].x)
+            val topRight = Point(1.0-src[A].y, src[A].x)
+            val bottomRight = Point(1.0-src[B].y,src[B].x)
+            val bottomLeft = Point(1.0-src[C].y,src[C].x)
+            return arrayOf(topLeft, topRight, bottomRight, bottomLeft)
+        }
+
+        if (rotation == RotationType.UP_SIDE_DOWN) {
+            //  A B  --> C D
+            //  D C  --> B A
+            val topLeft = Point(1.0-src[C].x, 1.0-src[C].y)
+            val topRight = Point(1.0-src[D].x, 1.0-src[D].y)
+            val bottomRight = Point(1.0-src[A].x,1.0-src[A].y)
+            val bottomLeft = Point(1.0-src[B].x,1.0-src[B].y)
+            return arrayOf(topLeft, topRight, bottomRight, bottomLeft)
+        }
+
+        if (rotation == RotationType.ANTI_CLOCKWISE) {
+            //  A B  --> B C
+            //  D C  --> A D
+            val topLeft = Point(src[B].y, 1.0-src[B].x)
+            val topRight = Point(src[C].y, 1.0-src[C].x)
+            val bottomRight = Point(src[D].y,1.0-src[D].x)
+            val bottomLeft = Point(src[A].y,1.0-src[A].x)
+            return arrayOf(topLeft, topRight, bottomRight, bottomLeft)
+        }
+
+        throw IllegalArgumentException("Unsupported rotation type: ${rotation.name}")
     }
 }
