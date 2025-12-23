@@ -1,4 +1,4 @@
-package com.licmeth.camscanner
+package com.licmeth.camscanner.view
 
 import android.content.Context
 import android.graphics.Canvas

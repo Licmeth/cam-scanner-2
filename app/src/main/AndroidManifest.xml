@@ -22,7 +22,7 @@
         android:theme="@style/Theme.CamScanner">
         
         <activity
-            android:name=".MainActivity"
+            android:name=".activity.MainActivity"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
@@ -32,13 +32,13 @@
         </activity>
         
         <activity
-            android:name=".DocumentPreviewActivity"
+            android:name=".activity.DocumentPreviewActivity"
             android:screenOrientation="portrait" />
         
         <activity
-            android:name=".SettingsActivity"
+            android:name=".activity.SettingsActivity"
             android:label="@string/settings"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".activity.MainActivity" />
 
     </application>
 

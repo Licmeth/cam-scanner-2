@@ -1,9 +1,10 @@
-package com.licmeth.camscanner
+package com.licmeth.camscanner.activity
 
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
@@ -11,22 +12,35 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.ActionBarDrawerToggle
-import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.*
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.navigation.NavigationView
+import com.licmeth.camscanner.DocumentScanner
+import com.licmeth.camscanner.R
 import com.licmeth.camscanner.databinding.ActivityMainBinding
-import kotlinx.coroutines.*
+import com.licmeth.camscanner.model.DocumentAspectRatio
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.Point
+import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
+class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemSelectedListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
@@ -44,7 +58,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         private val REQUIRED_PERMISSIONS = mutableListOf(
             Manifest.permission.CAMERA
         ).apply {
-            if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
                 add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
         }.toTypedArray()
@@ -52,7 +66,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // Initialize OpenCV
         if (!OpenCVLoader.initLocal()) {
             Log.e(TAG, "OpenCV initialization failed")
@@ -62,7 +76,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         } else {
             Log.d(TAG, "OpenCV initialized successfully")
         }
-        
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -224,7 +238,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                     handleDebugOutput(debugBitmap?.let { bitmap ->
                         DocumentScanner.rotateBitmap(bitmap, rotation.toFloat())
                     })
-                    
+
                     if (corners != null) {
                         // Save detected corners normalized to [0,1] for use in capture
                         detectedCorners = corners
@@ -236,13 +250,17 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                             cameraImageWidth = cameraImageHeight
                             cameraImageHeight = temp
 
-                            corners = DocumentScanner.rotateCorners(corners, DocumentScanner.RotationType.of(rotation))
+                            corners = DocumentScanner.rotateCorners(
+                                corners,
+                                DocumentScanner.RotationType.of(rotation)
+                            )
                         }
 
                         // Determine factor to scale corners to preview view dimensions
-                        val screenAspectRatio = binding.previewView.width.toFloat() / binding.previewView.height
+                        val screenAspectRatio =
+                            binding.previewView.width.toFloat() / binding.previewView.height
                         val cameraAspectRatio = cameraImageWidth / cameraImageHeight
-                        val scale =  if(cameraAspectRatio <= screenAspectRatio) {
+                        val scale = if (cameraAspectRatio <= screenAspectRatio) {
                             // camera picture is "wider" that screen picture
                             // to fill the screen, the camera picture needs to be scaled by height
                             // areas on the left and right of the camera picture are cropped to fill the screen
@@ -272,7 +290,10 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                         }
 
                         val scaledCorners = corners.map { point ->
-                            Point(point.x * cameraImageWidth * scale -shiftX, point.y * cameraImageHeight * scale -shiftY)
+                            Point(
+                                point.x * cameraImageWidth * scale - shiftX,
+                                point.y * cameraImageHeight * scale - shiftY
+                            )
                         }.toTypedArray()
 
                         binding.overlayView.setDocumentCorners(scaledCorners)
@@ -285,7 +306,7 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                     }
                 }
             }
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error processing image: ${e.message}")
         } finally {
@@ -346,9 +367,9 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
 
                     // Transform and crop the document
                     coroutineScope.launch(Dispatchers.Default) {
-                        detectedCorners?.let { relative_corners ->
+                        detectedCorners?.let { relativeCorners ->
                             // Rotate image, if needed
-                            var corners = relative_corners
+                            var corners = relativeCorners
                             if (rotationDegrees == 90 || rotationDegrees == 270) {
                                 bitmap = DocumentScanner.rotateBitmap(bitmap, rotationDegrees.toFloat())
                                 corners = DocumentScanner.rotateCorners(corners, DocumentScanner.RotationType.of(rotationDegrees))
@@ -361,19 +382,26 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                                 Point(point.x * imageWidth, point.y * imageHeight)
                             }.toTypedArray()
 
-                            val transformedBitmap = DocumentScanner.transformDocument(bitmap, corners)
-                            
+                            val transformedBitmap = DocumentScanner.transformDocument(bitmap, corners, DocumentAspectRatio.DIN_476_2.ratio)
+
                             withContext(Dispatchers.Main) {
                                 if (transformedBitmap != null) {
                                     // Navigate to preview activity
-                                    val intent = Intent(this@MainActivity, DocumentPreviewActivity::class.java)
-                                    
+                                    val intent = Intent(
+                                        this@MainActivity,
+                                        DocumentPreviewActivity::class.java
+                                    )
+
                                     // Save bitmap to cache and pass file path
-                                    val file = java.io.File(cacheDir, "captured_document.jpg")
+                                    val file = File(cacheDir, "captured_document.jpg")
                                     file.outputStream().use { out ->
-                                        transformedBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                                        transformedBitmap.compress(
+                                            Bitmap.CompressFormat.JPEG,
+                                            95,
+                                            out
+                                        )
                                     }
-                                    
+
                                     intent.putExtra("image_path", file.absolutePath)
                                     startActivity(intent)
                                 } else {

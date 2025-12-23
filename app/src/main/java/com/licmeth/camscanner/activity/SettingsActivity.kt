@@ -1,8 +1,6 @@
-package com.licmeth.camscanner
+package com.licmeth.camscanner.activity
 
-import android.content.Context
 import android.os.Bundle
-import android.widget.CheckBox
 import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import com.licmeth.camscanner.databinding.ActivitySettingsBinding
@@ -25,7 +23,7 @@ class SettingsActivity : AppCompatActivity() {
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
         // Load saved settings
         binding.qualitySeekbar.progress = prefs.getInt(KEY_IMAGE_QUALITY, 85)

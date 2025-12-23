@@ -12,6 +12,7 @@ import org.opencv.imgproc.Imgproc
 import kotlin.collections.MutableList
 import kotlin.math.sqrt
 import androidx.core.graphics.createBitmap
+import kotlin.math.abs
 
 data class DocumentScannerResult(
     val corners: Array<Point>?,
@@ -280,113 +281,46 @@ object DocumentScanner {
         return null
     }
 
-
-    fun detectDocumentOld(bitmap: Bitmap): Array<Point>? {
-        try {
-            val mat = Mat()
-            Utils.bitmapToMat(bitmap, mat)
-
-            // Convert to grayscale
-            val gray = Mat()
-            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGB2GRAY)
-
-            // Apply Gaussian blur
-            val blurred = Mat()
-            Imgproc.GaussianBlur(gray, blurred, Size(5.0, 5.0), 0.0)
-
-            // Edge detection
-            val edges = Mat()
-            Imgproc.Canny(blurred, edges, 50.0, 150.0)
-
-            // Find contours
-            val contours = ArrayList<MatOfPoint>()
-            val hierarchy = Mat()
-            Imgproc.findContours(
-                edges,
-                contours,
-                hierarchy,
-                Imgproc.RETR_EXTERNAL,
-                Imgproc.CHAIN_APPROX_SIMPLE
-            )
-
-            // Find the largest contour
-            var maxArea = 0.0
-            var maxContour: MatOfPoint? = null
-
-            for (contour in contours) {
-                val area = Imgproc.contourArea(contour)
-                if (area > maxArea) {
-                    maxArea = area
-                    maxContour = contour
-                }
-            }
-
-            maxContour?.let { contour ->
-                // Approximate the contour to a polygon
-                val peri = Imgproc.arcLength(MatOfPoint2f(*contour.toArray()), true)
-                val approx = MatOfPoint2f()
-                Imgproc.approxPolyDP(
-                    MatOfPoint2f(*contour.toArray()),
-                    approx,
-                    0.02 * peri,
-                    true
-                )
-
-                // If we have 4 corners, we found a document
-                if (approx.rows() == 4) {
-                    val points = approx.toArray()
-                    
-                    // Order points: top-left, top-right, bottom-right, bottom-left
-                    val orderedPoints = orderPoints(points)
-                    
-                    // Release resources
-                    mat.release()
-                    gray.release()
-                    blurred.release()
-                    edges.release()
-                    hierarchy.release()
-                    approx.release()
-                    
-                    return orderedPoints
-                }
-            }
-
-            // Release resources
-            mat.release()
-            gray.release()
-            blurred.release()
-            edges.release()
-            hierarchy.release()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error detecting document: ${e.message}")
-            e.printStackTrace()
-        }
-
-        return null
-    }
-
-    fun transformDocument(bitmap: Bitmap, corners: Array<Point>): Bitmap? {
+    fun transformDocument(bitmap: Bitmap, corners: Array<Point>, aspectRatio: Float?): Bitmap? {
         try {
             val mat = Mat()
             Utils.bitmapToMat(bitmap, mat)
 
             // Calculate output dimensions
-            val width = maxOf(
+            var width = maxOf(
                 distance(corners[0], corners[1]),
                 distance(corners[2], corners[3])
             )
-            val height = maxOf(
+            var height = maxOf(
                 distance(corners[0], corners[3]),
                 distance(corners[1], corners[2])
             )
 
+            // Adjust aspect ratio if provided
+            if (aspectRatio != null) {
+                val currentAspectRatio = width.toFloat() / height.toFloat()
+
+                // Determine the closest target aspect ratio (portrait or landscape)
+                val targetAspectRatio = if(abs(currentAspectRatio - aspectRatio) <= abs(currentAspectRatio - (1.0F / aspectRatio))) {
+                    aspectRatio
+                } else {
+                    1.0F / aspectRatio
+                }
+
+                // Adjust width or height to match target aspect ratio
+                if (currentAspectRatio > targetAspectRatio) {
+                    width = height * targetAspectRatio
+                } else {
+                    height = width / targetAspectRatio
+                }
+            }
+
             // Destination points
             val dstPoints = MatOfPoint2f(
                 Point(0.0, 0.0),
-                Point(width - 1, 0.0),
-                Point(width - 1, height - 1),
-                Point(0.0, height - 1)
+                Point(width, 0.0),
+                Point(width, height),
+                Point(0.0, height)
             )
 
             // Source points
@@ -405,11 +339,7 @@ object DocumentScanner {
             )
 
             // Convert back to bitmap
-            val resultBitmap = Bitmap.createBitmap(
-                width.toInt(),
-                height.toInt(),
-                Bitmap.Config.ARGB_8888
-            )
+            val resultBitmap = createBitmap(width.toInt(), height.toInt())
             Utils.matToBitmap(warped, resultBitmap)
 
             // Release resources
