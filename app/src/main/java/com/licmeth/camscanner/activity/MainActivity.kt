@@ -12,6 +12,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.ActionBarDrawerToggle
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -25,7 +26,7 @@ import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
-import com.licmeth.camscanner.DocumentScanner
+import com.licmeth.camscanner.helper.DocumentScanner
 import com.licmeth.camscanner.R
 import com.licmeth.camscanner.databinding.ActivityMainBinding
 import com.licmeth.camscanner.model.DocumentAspectRatio
@@ -48,9 +49,12 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var drawerLayout: DrawerLayout
     private var imageCapture: ImageCapture? = null
+    private var camera: Camera? = null
     private var detectedCorners: Array<Point>? = null
     private var lastDebugBitmap: Bitmap? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
+    private var useFlash: Boolean = false
+    private var targetAspectRatio: DocumentAspectRatio = DocumentAspectRatio.NONE
 
     companion object {
         private const val TAG = "MainActivity"
@@ -133,6 +137,8 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
 
     override fun onDestroy() {
         super.onDestroy()
+        // Ensure torch is turned off when destroying activity
+        camera?.cameraControl?.enableTorch(false)
         lastDebugBitmap?.recycle()
         cameraExecutor.shutdown()
         coroutineScope.cancel()
@@ -185,11 +191,39 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
         binding.captureButton.setOnClickListener {
             captureDocument()
         }
+
+        // Setup toggle flash button
+        binding.toggleFlashButton.setOnClickListener {
+            useFlash = !useFlash
+            lifecycleScope.launch {
+                preferences.setUseFlash(useFlash)
+            }
+        }
+
+        // Setup aspect ratio button
+        binding.toggleAspectRatioButton.setOnClickListener {
+            targetAspectRatio = when (targetAspectRatio) {
+                DocumentAspectRatio.NONE -> DocumentAspectRatio.DIN_476_2
+                DocumentAspectRatio.DIN_476_2 -> DocumentAspectRatio.ANSI_LETTER
+                DocumentAspectRatio.ANSI_LETTER -> DocumentAspectRatio.NONE
+            }
+            lifecycleScope.launch {
+                preferences.setTargetAspectRatio(targetAspectRatio)
+            }
+        }
     }
 
     private fun setupPreferenceListeners() {
         lifecycleScope.launch {
             preferences.enableDebugOverlay.collect { enabled -> toggleDebugOverlay(enabled) }
+        }
+
+        lifecycleScope.launch {
+            preferences.useFlash.collect { enabled -> setupFlashUsage(enabled) }
+        }
+
+        lifecycleScope.launch {
+            preferences.targetAspectRatio.collect { targetRatio -> setupAdjustAspectRatio(targetRatio) }
         }
     }
     /**
@@ -238,13 +272,17 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
                 cameraProvider.unbindAll()
 
                 // Bind use cases to camera
-                cameraProvider.bindToLifecycle(
+                camera = cameraProvider.bindToLifecycle(
                     this,
                     cameraSelector,
                     preview,
                     imageCapture,
                     imageAnalyzer
                 )
+
+                // Apply current flash/torch preference if any
+                camera?.cameraControl?.enableTorch(useFlash)
+                imageCapture?.flashMode = if (useFlash) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
 
             } catch (exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
@@ -346,6 +384,29 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
         }
     }
 
+    private fun setupFlashUsage(enabled: Boolean) {
+        this.useFlash = enabled
+        if (enabled) {
+            binding.toggleFlashButton.setImageResource(R.drawable.ic_flash_on)
+            imageCapture?.flashMode = ImageCapture.FLASH_MODE_ON
+        } else {
+            binding.toggleFlashButton.setImageResource(R.drawable.ic_flash_off)
+            imageCapture?.flashMode = ImageCapture.FLASH_MODE_OFF
+        }
+
+        // Update torch state for preview
+        camera?.cameraControl?.enableTorch(enabled)
+    }
+
+    private fun setupAdjustAspectRatio(targetAspectRatio: DocumentAspectRatio) {
+        this.targetAspectRatio = targetAspectRatio
+        when (targetAspectRatio) {
+            DocumentAspectRatio.NONE -> binding.toggleAspectRatioButton.setImageResource(R.drawable.ic_aspect_ratio)
+            DocumentAspectRatio.DIN_476_2 -> binding.toggleAspectRatioButton.setImageResource(R.drawable.din_logo)
+            DocumentAspectRatio.ANSI_LETTER -> binding.toggleAspectRatioButton.setImageResource(R.drawable.ansi_logo)
+        }
+    }
+
     private fun toggleDebugOverlay(enabled: Boolean) {
         if (enabled) {
             if (lastDebugBitmap != null) {
@@ -406,7 +467,10 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
                                 Point(point.x * imageWidth, point.y * imageHeight)
                             }.toTypedArray()
 
-                            val transformedBitmap = DocumentScanner.transformDocument(bitmap, corners, DocumentAspectRatio.DIN_476_2.ratio)
+                            val transformedBitmap = DocumentScanner.transformDocument(
+                                bitmap,
+                                corners,
+                                if (targetAspectRatio == DocumentAspectRatio.NONE) null else targetAspectRatio.ratio)
 
                             withContext(Dispatchers.Main) {
                                 if (transformedBitmap != null) {

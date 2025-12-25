@@ -19,21 +19,16 @@ class UserPreferences(val context: Context) {
     private val dataStore = context.dataStore
 
     companion object {
-        val KEY_ADJUST_ASPECT_RATIO = booleanPreferencesKey("adjust_aspect_ratio")
         val KEY_TARGET_ASPECT_RATIO = intPreferencesKey("target_aspect_ratio")
         val KEY_ENABLE_DEBUG_OVERLAY = booleanPreferencesKey("enable_debug_overlay")
         val KEY_DEBUG_OUTPUT_LEVEL = intPreferencesKey("debug_output_level")
+        val KEY_USE_FLASH = booleanPreferencesKey("use_flash")
     }
 
-    val adjustAspectRatio: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_ADJUST_ASPECT_RATIO] ?: false }
     val targetAspectRatio: Flow<DocumentAspectRatio> = dataStore.data.map { pref -> DocumentAspectRatio.of(pref[KEY_TARGET_ASPECT_RATIO] ?: DocumentAspectRatio.DIN_476_2.value) }
     val enableDebugOverlay: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_ENABLE_DEBUG_OVERLAY] ?: false }
     val debugOutputLevel: Flow<DebugOutputLevel> = dataStore.data.map { pref -> DebugOutputLevel.of(pref[KEY_DEBUG_OUTPUT_LEVEL] ?: DebugOutputLevel.PREPROCESSED.value) }
-
-
-    suspend fun setAdjustAspectRatio(value: Boolean) {
-        dataStore.edit { pref -> pref[KEY_ADJUST_ASPECT_RATIO] = value }
-    }
+    val useFlash: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_USE_FLASH] ?: false }
 
     suspend fun setTargetAspectRatio(value: DocumentAspectRatio) {
         dataStore.edit { pref -> pref[KEY_TARGET_ASPECT_RATIO] = value.value }
@@ -45,5 +40,9 @@ class UserPreferences(val context: Context) {
 
     suspend fun setDebugOutputLevel(value: DebugOutputLevel) {
         dataStore.edit { pref -> pref[KEY_DEBUG_OUTPUT_LEVEL] = value.value }
+    }
+
+    suspend fun setUseFlash(value: Boolean) {
+        dataStore.edit { pref -> pref[KEY_USE_FLASH] = value }
     }
 }

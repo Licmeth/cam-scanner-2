@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        User Interface                        │
+│                       User Interface                        │
 └─────────────────────────────────────────────────────────────┘
                               │
                               │
@@ -12,7 +12,7 @@
         │                     │                     │
         ▼                     ▼                     ▼
 ┌──────────────┐    ┌──────────────────┐    ┌──────────────┐
-│  MainActivity │    │ Document Preview │    │   Settings   │
+│ MainActivity │    │ Document Preview │    │   Settings   │
 │              │    │     Activity     │    │   Activity   │
 │  - Camera    │    │                  │    │              │
 │  - Detection │    │  - Preview Doc   │    │  - Quality   │
@@ -23,7 +23,7 @@
         │                     │
         ▼                     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     Core Components                          │
+│                    Core Components                          │
 ├─────────────────────────────────────────────────────────────┤
 │  DocumentScanner (OpenCV)     DocumentOverlayView           │
 │  - detectDocument()           - Visual Feedback             │
@@ -33,9 +33,9 @@
         │                     │
         ▼                     ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    External Libraries                        │
+│                   External Libraries                        │
 ├─────────────────────────────────────────────────────────────┤
-│  CameraX          OpenCV 4.8.0        iText7               │
+│  CameraX          OpenCV 4.8.0        iText7                │
 │  - Preview        - Edge Detection    - PDF Generation      │
 │  - Capture        - Transform         - Layout              │
 │  - Analysis       - Image Processing                        │

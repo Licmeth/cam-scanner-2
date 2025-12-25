@@ -1,6 +1,6 @@
-# cam-scanner-2
+# Cam Scanner
 
-An Android app that allows you to scan documents using your camera, automatically transform and crop the picture, and convert it to PDF.
+An Android app that allows you to scan documents using your smartphone's camera, automatically transform and crop the picture, and convert it to PDF.
 
 ## Features
 
@@ -8,13 +8,23 @@ An Android app that allows you to scan documents using your camera, automaticall
 - **Visual Feedback**: Shows a green rectangle overlay around detected documents
 - **Automatic Perspective Correction**: Transforms and crops the captured image to fit the document perfectly
 - **PDF Export**: Save scanned documents as PDF files
-- **Settings Menu**: Accessible via a slide-out drawer menu
-- **Runtime Permissions**: Requests camera and storage permissions on startup
+
+## Todo
+
+- [ ] Smooth edge detection, by averaging multiple frames
+- [ ] Multi-page document scanning
+- [ ] Image filters (color, grayscale, black & white)
+- [ ] Allow user to manually adjust corners before saving
+- [ ] Allow user to define formats for the detection
+- [x] Add flash usage
+- [ ] Auto-adjust brightness and contrast
+- [ ] Allow image JPEG2000 compression for pdf
+- [ ] Enable pinch to zoom in camera preview
 
 ## Requirements
 
 - Android 7.0 (API level 24) or higher
-- Camera with autofocus
+- Camera, ideally with autofocus
 - Storage permission for saving PDFs
 
 ## How to Use
@@ -25,7 +35,6 @@ An Android app that allows you to scan documents using your camera, automaticall
 4. Press the "Capture" button to take the picture
 5. Review the automatically cropped and transformed document
 6. Press "Save as PDF" to save the document, or "Retake" to capture again
-7. Access settings via the menu icon (three horizontal lines) in the top-left corner
 
 ## Building the Project
 

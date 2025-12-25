@@ -1,6 +1,7 @@
 package com.licmeth.camscanner.model
 
 enum class DocumentAspectRatio(val value: Int, val ratio: Float) {
+    NONE(0, 0.0F),              // no fixed aspect ratio
     DIN_476_2(1, 1.4142F),  // 1/sqrt(2) for all DIN 476-2 / EN ISO 216 paper formats, e.g. A4, A5
     ANSI_LETTER(2, 1.2941F);   // ANSI A letter format, 8.5 x 11 inches
 

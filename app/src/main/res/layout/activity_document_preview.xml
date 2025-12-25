@@ -2,38 +2,65 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:background="@color/black">
 
     <ImageView
         android:id="@+id/document_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerInside" />
+        android:scaleType="centerInside"
+        android:contentDescription="@string/document_preview"/>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="horizontal"
-        android:padding="16dp"
-        android:gravity="center">
+        android:padding="@dimen/normal_margin"
+        android:gravity="center"
+        android:background="#80000000">
 
-        <Button
+        <ImageView
             android:id="@+id/retake_button"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/retake"
-            android:layout_marginEnd="8dp" />
+            android:contentDescription="@string/retake_picture"
+            android:src="@drawable/ic_undo"
+            android:padding="@dimen/smaller_margin"
+            android:layout_marginStart="@dimen/normal_margin"/>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
 
         <Button
             android:id="@+id/save_button"
-            android:layout_width="0dp"
+            style="@style/ButtonStyle"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/save_pdf"
-            android:layout_marginStart="8dp" />
+            android:text="@string/save_pdf"/>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
+        <ImageView
+            android:id="@+id/filter_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/open_filter_options"
+            android:src="@drawable/ic_tune"
+            android:padding="@dimen/smaller_margin"
+            android:layout_marginEnd="@dimen/normal_margin"/>
 
     </LinearLayout>
 
 </RelativeLayout>
+
+
+
+
+

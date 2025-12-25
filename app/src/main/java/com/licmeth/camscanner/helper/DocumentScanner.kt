@@ -1,6 +1,7 @@
-package com.licmeth.camscanner
+package com.licmeth.camscanner.helper
 
 import android.graphics.Bitmap
+import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.util.Log
 import androidx.annotation.OptIn
@@ -30,7 +31,7 @@ object DocumentScanner {
 
         companion object {
             private val VALUE_MAP: Map<Int, RotationType> =
-                RotationType.entries.associateBy { it.value }
+                entries.associateBy { it.value }
 
             /** Returns matching RotationType or throws if not found */
             fun of(value: Int): RotationType =
@@ -142,7 +143,7 @@ object DocumentScanner {
     fun toGrayScaleMat(imageProxy: ImageProxy): Mat {
         val image = imageProxy.image ?: throw IllegalArgumentException("Image is null")
 
-        if (image.format != android.graphics.ImageFormat.YUV_420_888) {
+        if (image.format != ImageFormat.YUV_420_888) {
             throw IllegalArgumentException("Unsupported image format: ${image.format}")
         }
 
