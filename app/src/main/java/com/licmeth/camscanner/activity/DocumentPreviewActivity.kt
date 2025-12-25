@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import com.itextpdf.io.image.ImageDataFactory
 import com.itextpdf.kernel.pdf.PdfDocument
 import com.itextpdf.kernel.pdf.PdfWriter
@@ -24,12 +23,8 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.div
-import kotlin.text.format
-import kotlin.text.insert
-import kotlin.text.toFloat
 
-class DocumentPreviewActivity : AppCompatActivity() {
+class DocumentPreviewActivity : ActivityWithPreferences() {
 
     private lateinit var binding: ActivityDocumentPreviewBinding
     private var currentBitmap: Bitmap? = null
@@ -78,6 +73,29 @@ class DocumentPreviewActivity : AppCompatActivity() {
                         if (out == null) throw IOException("Failed to open output stream.")
                         // create PDF writing to the stream
                         val stream = ByteArrayOutputStream()
+
+                        //TODO: Use JPX / JPEG2000 for better compression
+                        // 1. Build or include OpenJPEG for Android (as source submodule or prebuilt static libs) and expose it to CMake.
+                        // 2. Add a small JNI wrapper that accepts raw RGB bytes (from Android Bitmap.getPixels()), calls OpenJPEG to encode JP2/JPX into an in-memory buffer, and returns a jbyteArray.
+                        // 3. Call the JNI method from Kotlin (encodeBitmapToJpx(bitmap)): extract RGB bytes, call native, return the JP2/JPX ByteArray.
+                        // 4. Link the produced JP2 bytes into iText via ImageDataFactory.create(jpxBytes) as in your existing code.
+                        // Below are sample pdfimages -list outputs showing the image information of JPX-encoded images in PDFs created by a professional office printer/scanner
+                        //   daniel@dell:~/Downloads$ pdfimages -list 2001-12-31\ Deka\ Jahresdepotauszug\ 2001.pdf
+                        // page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio
+                        // --------------------------------------------------------------------------------------------
+                        // 1     0 image    1240  1754  gray    1   8  jpx    no        29  0   150   150 36.6K 1.7%
+                        // 1     1 image     620   877  gray    1   8  jpx    no        31  0    75    75 5875B 1.1%
+                        // 1     2 mask     2480  3508  -       1   1  jbig2  no        31  0   300   300 14.0K 1.3%
+                        //   daniel@dell:~/Downloads$ pdfimages -list 2012-07-20\ DKB\ Eröffnung\ Ihres\ DKB-Cash.pdf
+                        // // page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio
+                        // --------------------------------------------------------------------------------------------
+                        // 1     0 image    1240  1754  rgb     3   8  jpx    no        32  0   150   150 1186B 0.0%
+                        // 1     1 image     620   877  rgb     3   8  jpx    no        34  0    75    75 40.7K 2.6%
+                        // 1     2 mask     2480  3508  -       1   1  jbig2  no        34  0   300   300 35.6K 3.4%
+                        // 2     3 image    1240  1754  gray    1   8  jpx    no        35  0   150   150  631B 0.0%
+                        // 2     4 image     620   877  gray    1   8  jpx    no        37  0    75    75 7467B 1.4%
+                        // 2     5 mask     2480  3508  -       1   1  jbig2  no        37  0   300   300 19.4K 1.8%
+
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
                         val imageData = ImageDataFactory.create(stream.toByteArray())
 
@@ -141,81 +159,6 @@ class DocumentPreviewActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 e.printStackTrace()
                 Toast.makeText(this, getString(R.string.error_saving_document) + ": ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    private fun saveToPdfOld() {
-        currentBitmap?.let { bitmap ->
-            try {
-                // Create output directory in app-specific external storage
-                val documentsDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // For Android 10+, use app-specific external storage
-                    File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "CamScanner")
-                } else {
-                    // For older versions, use public documents directory
-                    File(
-                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-                        "CamScanner"
-                    )
-                }
-
-                if (!documentsDir.exists()) {
-                    documentsDir.mkdirs()
-                }
-
-                // Create file with timestamp
-                val timestamp = SimpleDateFormat(
-                    "yyyyMMdd_HHmmss",
-                    Locale.getDefault()
-                ).format(Date())
-                val pdfFile = File(documentsDir, "scan_$timestamp.pdf")
-
-                // Convert bitmap to byte array
-                val stream = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
-                val imageData = ImageDataFactory.create(stream.toByteArray())
-
-                // Create PDF
-                val pdfWriter = PdfWriter(pdfFile)
-                val pdfDocument = PdfDocument(pdfWriter)
-                val document = Document(pdfDocument)
-
-                // Add image to PDF
-                val pdfImage = Image(imageData)
-
-                // Scale image to fit page
-                val pageSize = pdfDocument.defaultPageSize
-                val imageWidth = bitmap.width.toFloat()
-                val imageHeight = bitmap.height.toFloat()
-                val pageWidth = pageSize.width - 40f  // 20pt margins on each side
-                val pageHeight = pageSize.height - 40f
-
-                val scaleWidth = pageWidth / imageWidth
-                val scaleHeight = pageHeight / imageHeight
-                val scale = minOf(scaleWidth, scaleHeight)
-
-                pdfImage.scaleAbsolute(imageWidth * scale, imageHeight * scale)
-                pdfImage.setMargins(20f, 20f, 20f, 20f)
-
-                document.add(pdfImage)
-                document.close()
-
-                Toast.makeText(
-                    this,
-                    getString(R.string.document_saved) + "\n${pdfFile.absolutePath}",
-                    Toast.LENGTH_LONG
-                ).show()
-
-                finish()
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(
-                    this,
-                    getString(R.string.error_saving_document) + ": ${e.message}",
-                    Toast.LENGTH_LONG
-                ).show()
             }
         }
     }

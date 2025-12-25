@@ -12,6 +12,7 @@ import org.opencv.imgproc.Imgproc
 import kotlin.collections.MutableList
 import kotlin.math.sqrt
 import androidx.core.graphics.createBitmap
+import com.licmeth.camscanner.model.DebugOutputLevel
 import kotlin.math.abs
 
 data class DocumentScannerResult(
@@ -36,15 +37,6 @@ object DocumentScanner {
                 VALUE_MAP[value]
                     ?: throw IllegalArgumentException("Unsupported rotation value: $value")
         }
-    }
-
-    enum class OutputStage(val value: Int) {
-        NONE(-1),
-        PREPROCESSED(0),
-        CONTENT_REMOVED(1),
-        EDGES_DETECTED(2),
-        CONTOURS_DETECTED(3),
-        CORNERS_DETECTED(4)
     }
     
     private const val TAG = "DocumentScanner"
@@ -71,26 +63,26 @@ object DocumentScanner {
      * The corners are returned in normalized coordinates [0,1] relative to the image dimensions.
      *
      * @param grayscaleImage The input grayscale image as an OpenCV Mat.
-     * @param debugOutputStage The stage at which to output the debug image.
+     * @param debugOutputLevel The stage at which to output the debug image.
      * @return A DocumentScannerResult containing the detected corners and optional debug output image.
      */
-    fun detectDocument(grayscaleImage: Mat, debugOutputStage: OutputStage): DocumentScannerResult {
+    fun detectDocument(grayscaleImage: Mat, debugOutputLevel: DebugOutputLevel): DocumentScannerResult {
         try {
             var debugOutput: Bitmap? = null
             val processingMat = preprocessInput(grayscaleImage)
-            if (debugOutputStage == OutputStage.PREPROCESSED) {
+            if (debugOutputLevel == DebugOutputLevel.PREPROCESSED) {
                 debugOutput = createBitmap(processingMat.cols(), processingMat.rows())
                 Utils.matToBitmap(processingMat, debugOutput)
             }
 
             removeDocumentContent(processingMat)
-            if (debugOutputStage == OutputStage.CONTENT_REMOVED) {
+            if (debugOutputLevel == DebugOutputLevel.CONTENT_REMOVED) {
                 debugOutput = createBitmap(processingMat.cols(), processingMat.rows())
                 Utils.matToBitmap(processingMat, debugOutput)
             }
 
             edgeDetection(processingMat)
-            if (debugOutputStage == OutputStage.EDGES_DETECTED) {
+            if (debugOutputLevel == DebugOutputLevel.EDGES_DETECTED) {
                 debugOutput = createBitmap(processingMat.cols(), processingMat.rows())
                 Utils.matToBitmap(processingMat, debugOutput)
             }
@@ -164,13 +156,6 @@ object DocumentScanner {
 
         val mat = Mat(image.height, image.width, CvType.CV_8UC1)
         mat.put(0, 0, yBytes)
-
-        // Rotate the image if needed
-//        when (imageProxy.imageInfo.rotationDegrees) {
-//            90 -> Core.rotate(mat, mat, Core.ROTATE_90_CLOCKWISE)
-//            //180 -> Core.rotate(mat, mat, Core.ROTATE_180)
-//            270 -> Core.rotate(mat, mat, Core.ROTATE_90_COUNTERCLOCKWISE)
-//        }
 
         return mat
     }

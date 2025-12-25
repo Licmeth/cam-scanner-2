@@ -33,9 +33,7 @@
             android:name=".activity.DocumentPreviewActivity" />
         
         <activity
-            android:name=".activity.SettingsActivity"
-            android:label="@string/settings"
-            android:parentActivityName=".activity.MainActivity" />
+            android:name=".activity.SettingsActivity" />
 
     </application>
 

@@ -16,6 +16,7 @@
     <string name="show_debug_overlay">Show debug overlay</string>
     <string name="debug_overlay_on">Debug overlay enabled</string>
     <string name="debug_overlay_off">Debug overlay hidden</string>
+    <string name="debug_settings">Debug</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="about">About</string>
@@ -23,4 +24,7 @@
     <string name="image_quality">Image Quality</string>
     <string name="auto_capture">Auto Capture</string>
     <string name="edge_detection_sensitivity">Edge Detection Sensitivity</string>
+    <string name="enable_debug_overlay">Enable debug overlay</string>
+    <string name="output_level">Output Level</string>
+    <string name="setting_value_default" />
 </resources>

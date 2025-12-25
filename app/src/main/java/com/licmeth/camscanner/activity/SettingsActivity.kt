@@ -1,61 +1,110 @@
 package com.licmeth.camscanner.activity
 
+import android.content.DialogInterface
 import android.os.Bundle
-import android.widget.SeekBar
-import androidx.appcompat.app.AppCompatActivity
+import android.util.Log
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.datastore.preferences.core.Preferences
+import androidx.lifecycle.lifecycleScope
 import com.licmeth.camscanner.databinding.ActivitySettingsBinding
+import com.licmeth.camscanner.helper.UserPreferences
+import com.licmeth.camscanner.model.DebugOutputLevel
+import kotlinx.coroutines.launch
 
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : ActivityWithPreferences() {
 
     private lateinit var binding: ActivitySettingsBinding
+    private var isCallbacksDisabled = false
 
     companion object {
-        private const val PREFS_NAME = "CamScannerPrefs"
-        private const val KEY_IMAGE_QUALITY = "image_quality"
-        private const val KEY_SENSITIVITY = "sensitivity"
-        private const val KEY_AUTO_CAPTURE = "auto_capture"
+        private const val TAG = "SettingsActivity"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivitySettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-
-        // Load saved settings
-        binding.qualitySeekbar.progress = prefs.getInt(KEY_IMAGE_QUALITY, 85)
-        binding.sensitivitySeekbar.progress = prefs.getInt(KEY_SENSITIVITY, 50)
-        binding.autoCaptureCheckbox.isChecked = prefs.getBoolean(KEY_AUTO_CAPTURE, false)
-
-        // Setup listeners
-        binding.qualitySeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                prefs.edit().putInt(KEY_IMAGE_QUALITY, progress).apply()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-
-        binding.sensitivitySeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                prefs.edit().putInt(KEY_SENSITIVITY, progress).apply()
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-
-        binding.autoCaptureCheckbox.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(KEY_AUTO_CAPTURE, isChecked).apply()
-        }
+        setupUI()
     }
 
     override fun onSupportNavigateUp(): Boolean {
         finish()
         return true
+    }
+
+    private fun setupUI() {
+        binding = ActivitySettingsBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        setupDebugOutputSwitch()
+        setupDebugOutputLevel()
+    }
+
+    private fun setupDebugOutputSwitch() {
+        // Add callback
+        binding.debugOverlaySwitch.setOnCheckedChangeListener { _, isChecked ->
+            handleValueChange(UserPreferences.KEY_ENABLE_DEBUG_OVERLAY, isChecked)
+        }
+
+        // Observe preferences and update UI
+        lifecycleScope.launch {
+            preferences.enableDebugOverlay.collect { enabled ->
+                // prevent triggering the listener while programmatically updating
+                isCallbacksDisabled = true
+                binding.debugOverlaySwitch.isChecked = enabled
+                isCallbacksDisabled = false
+            }
+        }
+    }
+
+    private fun setupDebugOutputLevel() {
+        // Add callback
+        binding.settingsDebugOutputLevelHolder.setOnClickListener {
+            AlertDialog.Builder(this@SettingsActivity)
+                .setTitle("Debug output level")
+                .setSingleChoiceItems(
+                    DebugOutputLevel.entries.map { it.name }.toTypedArray(),
+                    DebugOutputLevel.entries.indexOfFirst { it.name == binding.settingsDebugOutputLevelValue.text.toString() },
+                    DialogInterface.OnClickListener { dialog, which ->
+                        val selectedLevel = DebugOutputLevel.entries[which]
+                        // save selected value
+                        lifecycleScope.launch {
+                            preferences.setDebugOutputLevel(selectedLevel)
+                        }
+                        dialog.dismiss()
+                    }
+                )
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
+        // Observe preferences and update UI
+        lifecycleScope.launch {
+            preferences.debugOutputLevel.collect { outputLevel ->
+                // prevent triggering the listener while programmatically updating
+                isCallbacksDisabled = true
+                binding.settingsDebugOutputLevelValue.text = outputLevel.name
+                isCallbacksDisabled = false
+            }
+        }
+    }
+
+    private fun <T> handleValueChange(key: Preferences.Key<T>, value: T) {
+        if (isCallbacksDisabled) return
+
+        when (key) {
+            UserPreferences.KEY_ENABLE_DEBUG_OVERLAY -> {
+                lifecycleScope.launch {
+                    preferences.setEnableDebugOverlay(value as Boolean)
+                }
+            }
+            else -> {
+                Log.e(TAG, "Unknown preference key: $key")
+                Toast.makeText(this, "Error: Unknown preference key: $key", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 }

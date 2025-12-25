@@ -23,6 +23,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.navigation.NavigationView
 import com.licmeth.camscanner.DocumentScanner
 import com.licmeth.camscanner.R
@@ -32,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.opencv.android.OpenCVLoader
@@ -47,13 +49,11 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
     private lateinit var drawerLayout: DrawerLayout
     private var imageCapture: ImageCapture? = null
     private var detectedCorners: Array<Point>? = null
-    private var showDebugOverlay: Boolean = false
     private var lastDebugBitmap: Bitmap? = null
     private val coroutineScope = CoroutineScope(Dispatchers.Main + Job())
 
     companion object {
         private const val TAG = "MainActivity"
-        private const val KEY_SHOW_DEBUG_OVERLAY = "key_show_debug_overlay"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = mutableListOf(
             Manifest.permission.CAMERA
@@ -67,7 +67,78 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize OpenCV
+        initializeOpenCV()
+
+        setupUI()
+
+        setupPreferenceListeners()
+
+        cameraExecutor = Executors.newSingleThreadExecutor()
+
+        // Request permissions
+        if (isAllPermissionsGranted()) {
+            startCamera()
+        } else {
+            ActivityCompat.requestPermissions(
+                this,
+                REQUIRED_PERMISSIONS,
+                REQUEST_CODE_PERMISSIONS
+            )
+        }
+    }
+
+    override fun onNavigationItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.nav_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
+            R.id.nav_about -> {
+                Toast.makeText(this, "About: Cam Scanner v1.0", Toast.LENGTH_SHORT).show()
+            }
+            R.id.nav_help -> {
+                Toast.makeText(this, "Help: Point camera at document to scan", Toast.LENGTH_SHORT).show()
+            }
+        }
+        drawerLayout.closeDrawer(GravityCompat.START)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            drawerLayout.openDrawer(GravityCompat.START)
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (isAllPermissionsGranted()) {
+                startCamera()
+            } else {
+                Toast.makeText(
+                    this,
+                    R.string.camera_permission_required,
+                    Toast.LENGTH_SHORT
+                ).show()
+                finish()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        lastDebugBitmap?.recycle()
+        cameraExecutor.shutdown()
+        coroutineScope.cancel()
+    }
+
+    private fun initializeOpenCV() {
         if (!OpenCVLoader.initLocal()) {
             Log.e(TAG, "OpenCV initialization failed")
             Toast.makeText(this, "OpenCV initialization failed", Toast.LENGTH_LONG).show()
@@ -76,35 +147,27 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
         } else {
             Log.d(TAG, "OpenCV initialized successfully")
         }
+    }
 
+    private fun setupUI() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        showDebugOverlay = savedInstanceState?.getBoolean(KEY_SHOW_DEBUG_OVERLAY, false) == true
-
-        binding.debugOverlaySwitch.isChecked = showDebugOverlay
-        binding.debugImageView.visibility = View.GONE
-        binding.debugOverlaySwitch.setOnCheckedChangeListener { _, isChecked ->
-            toggleDebugOverlay(isChecked)
-        }
+        setSupportActionBar(binding.toolbar)
 
         // Setup drawer
         drawerLayout = binding.drawerLayout
         val toggle = ActionBarDrawerToggle(
             this,
             drawerLayout,
+            binding.toolbar,
             R.string.navigation_drawer_open,
             R.string.navigation_drawer_close
         )
         drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
 
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.setHomeButtonEnabled(true)
-
         binding.navView.setNavigationItemSelectedListener(this)
-
-        cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Handle back button
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -122,49 +185,18 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
         binding.captureButton.setOnClickListener {
             captureDocument()
         }
+    }
 
-        // Request permissions
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            ActivityCompat.requestPermissions(
-                this,
-                REQUIRED_PERMISSIONS,
-                REQUEST_CODE_PERMISSIONS
-            )
+    private fun setupPreferenceListeners() {
+        lifecycleScope.launch {
+            preferences.enableDebugOverlay.collect { enabled -> toggleDebugOverlay(enabled) }
         }
     }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putBoolean(KEY_SHOW_DEBUG_OVERLAY, showDebugOverlay)
-    }
-
     /**
      * Check if all required permissions are granted
      */
-    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
+    private fun isAllPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(baseContext, it) == PackageManager.PERMISSION_GRANTED
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (allPermissionsGranted()) {
-                startCamera()
-            } else {
-                Toast.makeText(
-                    this,
-                    R.string.camera_permission_required,
-                    Toast.LENGTH_SHORT
-                ).show()
-                finish()
-            }
-        }
     }
 
     /**
@@ -230,7 +262,7 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
 
             // Detect document in background
             coroutineScope.launch(Dispatchers.Default) {
-                val scannerResult = DocumentScanner.detectDocument(image, DocumentScanner.OutputStage.EDGES_DETECTED)
+                val scannerResult = DocumentScanner.detectDocument(image, preferences.debugOutputLevel.first())
                 var corners = scannerResult.corners
                 val debugBitmap = scannerResult.debugOutput
 
@@ -315,25 +347,27 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
     }
 
     private fun toggleDebugOverlay(enabled: Boolean) {
-        showDebugOverlay = enabled
-        if (!enabled) {
-            clearDebugOverlay()
-        }
-
-        val message = if (enabled) {
-            R.string.debug_overlay_on
+        if (enabled) {
+            if (lastDebugBitmap != null) {
+                binding.debugImageView.setImageBitmap(lastDebugBitmap)
+            } else {
+                binding.debugImageView.setImageDrawable(null)
+            }
+            binding.debugImageView.visibility = View.VISIBLE
+            binding.previewView.visibility = View.GONE
         } else {
-            R.string.debug_overlay_off
+            lastDebugBitmap?.recycle()
+            lastDebugBitmap = null
+            binding.debugImageView.setImageDrawable(null)
+            binding.debugImageView.visibility = View.GONE
+            binding.previewView.visibility = View.VISIBLE
         }
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun handleDebugOutput(debugBitmap: Bitmap?) {
-        if (!showDebugOverlay || debugBitmap == null) {
+        if (binding.debugImageView.visibility != View.VISIBLE || debugBitmap == null) {
             // Recycle any provided temporary debug bitmap
             debugBitmap?.recycle()
-
-            clearDebugOverlay()
             return
         }
 
@@ -342,16 +376,6 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
         lastDebugBitmap = debugBitmap
 
         binding.debugImageView.setImageBitmap(lastDebugBitmap)
-        binding.debugImageView.visibility = View.VISIBLE
-        binding.previewView.visibility = View.GONE
-    }
-
-    private fun clearDebugOverlay() {
-        lastDebugBitmap?.recycle()
-        lastDebugBitmap = null
-        binding.debugImageView.setImageDrawable(null)
-        binding.debugImageView.visibility = View.GONE
-        binding.previewView.visibility = View.VISIBLE
     }
 
     private fun captureDocument() {
@@ -393,6 +417,7 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
                                     )
 
                                     // Save bitmap to cache and pass file path
+                                    //TODO: Transfer bitmap uncompressed to avoid quality loss (could use a singleton)
                                     val file = File(cacheDir, "captured_document.jpg")
                                     file.outputStream().use { out ->
                                         transformedBitmap.compress(
@@ -428,34 +453,5 @@ class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemS
         )
     }
 
-    override fun onNavigationItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.nav_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-            }
-            R.id.nav_about -> {
-                Toast.makeText(this, "About: Cam Scanner v1.0", Toast.LENGTH_SHORT).show()
-            }
-            R.id.nav_help -> {
-                Toast.makeText(this, "Help: Point camera at document to scan", Toast.LENGTH_SHORT).show()
-            }
-        }
-        drawerLayout.closeDrawer(GravityCompat.START)
-        return true
-    }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) {
-            drawerLayout.openDrawer(GravityCompat.START)
-            return true
-        }
-        return super.onOptionsItemSelected(item)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        clearDebugOverlay()
-        cameraExecutor.shutdown()
-        coroutineScope.cancel()
-    }
 }
