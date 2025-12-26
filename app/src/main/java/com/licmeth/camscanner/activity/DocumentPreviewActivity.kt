@@ -1,13 +1,24 @@
 package com.licmeth.camscanner.activity
 
+import android.app.Dialog
 import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.media.MediaScannerConnection
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
+import android.view.Gravity
+import android.view.ViewGroup
+import android.view.Window
+import android.widget.TextView
 import android.widget.Toast
 import com.itextpdf.io.image.ImageDataFactory
 import com.itextpdf.kernel.pdf.PdfDocument
@@ -23,11 +34,26 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.graphics.drawable.toDrawable
+import androidx.lifecycle.lifecycleScope
+import com.licmeth.camscanner.model.ColorProfile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.core.graphics.createBitmap
 
 class DocumentPreviewActivity : ActivityWithPreferences() {
 
+    companion object {
+        private const val TAG = "DocumentPreviewActivity"
+    }
+
     private lateinit var binding: ActivityDocumentPreviewBinding
-    private var currentBitmap: Bitmap? = null
+    private lateinit var originalBitmap: Bitmap
+    private var displayBitmap: Bitmap? = null
+    private var currentColorProfile: ColorProfile = ColorProfile.COLOR
+
+    private var filterDialog: Dialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,10 +62,25 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
 
         // Load the captured image
         val imagePath = intent.getStringExtra("image_path")
-        imagePath?.let {
-            currentBitmap = BitmapFactory.decodeFile(it)
-            binding.documentImage.setImageBitmap(currentBitmap)
+
+        if (imagePath == null) {
+            Log.e(TAG, "No image path provided in intent")
+            Toast.makeText(this, "Error: No image path in intent.", Toast.LENGTH_LONG).show()
+            finish()
+            return
         }
+
+        displayBitmap = BitmapFactory.decodeFile(imagePath)
+        if (displayBitmap == null) {
+            Log.e(TAG, "Failed to load image from path: $imagePath")
+            Toast.makeText(this, "Error: Failed to load image.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+
+        originalBitmap = displayBitmap!!
+        binding.documentImage.setImageBitmap(displayBitmap)
+
 
         // Setup buttons
         binding.retakeButton.setOnClickListener {
@@ -49,10 +90,27 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
         binding.saveButton.setOnClickListener {
             saveToPdf()
         }
+
+        binding.filterButton.setOnClickListener {
+            setupAndShowFilterDialog()
+        }
+
+        // Observe color profile preference
+        lifecycleScope.launch {
+            preferences.colorProfile.collect { profile -> updateColorProfile(profile) }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (displayBitmap !== originalBitmap) {
+            displayBitmap?.recycle()
+        }
+        originalBitmap.recycle()
     }
 
     private fun saveToPdf() {
-        currentBitmap?.let { bitmap ->
+        displayBitmap?.let { bitmap ->
             try {
                 val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                 val filename = "scan_$timestamp.pdf"
@@ -163,8 +221,128 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        currentBitmap?.recycle()
+    private fun setupAndShowFilterDialog() {
+        filterDialog = Dialog(this)
+
+        filterDialog?.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        filterDialog?.setContentView(R.layout.filter_dialog)
+
+        // Setup callbacks
+        val profileBlackAndWhiteButton = filterDialog?.findViewById<android.view.View>(R.id.color_profile_black_and_white_button)
+        val profileGrayscaleButton = filterDialog?.findViewById<android.view.View>(R.id.color_profile_grayscale_button)
+        val profileColorButton = filterDialog?.findViewById<android.view.View>(R.id.color_profile_colors_button)
+
+        profileBlackAndWhiteButton?.setOnClickListener {
+            lifecycleScope.launch {
+                preferences.setColorProfile(ColorProfile.BLACK_AND_WHITE)
+            }
+        }
+        profileGrayscaleButton?.setOnClickListener {
+            lifecycleScope.launch {
+                preferences.setColorProfile(ColorProfile.GRAYSCALE)
+            }
+        }
+        profileColorButton?.setOnClickListener {
+            lifecycleScope.launch {
+                preferences.setColorProfile(ColorProfile.COLOR)
+            }
+        }
+
+        filterDialog?.show()
+        filterDialog?.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        filterDialog?.window?.setBackgroundDrawable(Color.TRANSPARENT.toDrawable())
+        filterDialog?.window?.attributes?.windowAnimations = R.style.DialogAnimation
+        filterDialog?.window?.setGravity(Gravity.BOTTOM)
+    }
+
+    private fun updateColorProfile(profile: ColorProfile) {
+        if (profile == currentColorProfile) return
+
+        // update current profile
+        currentColorProfile = profile
+
+        // update dialog UI
+        filterDialog?.let { dialog ->
+            val colorProfileValue = dialog.findViewById<TextView>(R.id.color_profile_value)
+            when (currentColorProfile) {
+                ColorProfile.COLOR -> colorProfileValue?.setText(R.string.color)
+                ColorProfile.GRAYSCALE -> colorProfileValue?.setText(R.string.grayscale)
+                ColorProfile.BLACK_AND_WHITE -> colorProfileValue?.setText(R.string.black_and_white)
+            }
+        }
+
+        // update displayed bitmap
+        when (profile) {
+            ColorProfile.COLOR -> {
+                // Restore original
+                updateDisplayBitmap(originalBitmap)
+            }
+            ColorProfile.GRAYSCALE -> {
+                lifecycleScope.launch {
+                    val gray = withContext(Dispatchers.Default) {
+                        toGrayscale(originalBitmap)
+                    }
+                    updateDisplayBitmap(gray)
+                }
+            }
+            ColorProfile.BLACK_AND_WHITE -> {
+                lifecycleScope.launch {
+                    val bw = withContext(Dispatchers.Default) {
+                        toBlackAndWhite(originalBitmap)
+                    }
+                    updateDisplayBitmap(bw)
+                }
+            }
+        }
+    }
+
+    private fun updateDisplayBitmap(newBitmap: Bitmap) {
+        // recycle previous displayed bitmap if it's not the original
+        if (displayBitmap !== originalBitmap) {
+            displayBitmap?.recycle()
+        }
+        displayBitmap = newBitmap
+        binding.documentImage.setImageBitmap(displayBitmap)
+    }
+
+    private fun toGrayscale(src: Bitmap): Bitmap {
+        val width = src.width
+        val height = src.height
+        val grayBitmap = createBitmap(width, height)
+
+        val canvas = Canvas(grayBitmap)
+        val paint = Paint()
+        val colorMatrix = ColorMatrix()
+        colorMatrix.setSaturation(0f)
+        paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
+        canvas.drawBitmap(src, 0f, 0f, paint)
+
+        return grayBitmap
+    }
+
+    private fun toBlackAndWhite(src: Bitmap): Bitmap {
+        // First produce grayscale
+        val gray = toGrayscale(src)
+        val width = gray.width
+        val height = gray.height
+        val bwBitmap = createBitmap(width, height)
+
+        val pixels = IntArray(width * height)
+        gray.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        // Simple luminance threshold
+        val threshold = 128
+        for (i in pixels.indices) {
+            val c = pixels[i]
+            val r = Color.red(c)
+            val g = Color.green(c)
+            val b = Color.blue(c)
+            val luminance = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
+            pixels[i] = if (luminance >= threshold) Color.WHITE else Color.BLACK
+        }
+
+        bwBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        gray.recycle()
+        return bwBitmap
     }
 }

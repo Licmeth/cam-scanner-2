@@ -31,4 +31,9 @@
     <string name="toggle_automatic_aspect_ratio">Toggle automatic aspect ratio</string>
     <string name="document_preview">Document preview</string>
     <string name="open_filter_options">Open filter options</string>
+    <string name="color_profile">Color Profile</string>
+    <string name="brightness_contrast"><![CDATA[Brightness & Contrast]]></string>
+    <string name="color">Color</string>
+    <string name="grayscale">Grayscale</string>
+    <string name="black_and_white"><![CDATA[Black & white]]></string>
 </resources>

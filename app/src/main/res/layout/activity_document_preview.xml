@@ -5,6 +5,8 @@
     android:fitsSystemWindows="true"
     android:background="@color/black">
 
+
+    <!-- Main activity content -->
     <ImageView
         android:id="@+id/document_image"
         android:layout_width="match_parent"
@@ -23,11 +25,11 @@
 
         <ImageView
             android:id="@+id/retake_button"
+            style="@style/IconButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:contentDescription="@string/retake_picture"
             android:src="@drawable/ic_undo"
-            android:padding="@dimen/smaller_margin"
             android:layout_marginStart="@dimen/normal_margin"/>
 
         <View
@@ -49,11 +51,11 @@
 
         <ImageView
             android:id="@+id/filter_button"
+            style="@style/IconButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:contentDescription="@string/open_filter_options"
             android:src="@drawable/ic_tune"
-            android:padding="@dimen/smaller_margin"
             android:layout_marginEnd="@dimen/normal_margin"/>
 
     </LinearLayout>

@@ -66,10 +66,10 @@
 
                 <ImageView
                     android:id="@+id/toggle_flash_button"
+                    style="@style/IconButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="@dimen/normal_margin"
-                    android:padding="@dimen/smaller_margin"
                     android:src="@drawable/ic_flash_on"
                     android:contentDescription="@string/toggle_flash"/>
 
@@ -93,10 +93,10 @@
 
                 <ImageView
                     android:id="@+id/toggle_aspect_ratio_button"
+                    style="@style/IconButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="@dimen/normal_margin"
-                    android:padding="@dimen/smaller_margin"
                     android:src="@drawable/ic_aspect_ratio"
                     android:contentDescription="@string/toggle_automatic_aspect_ratio"/>
 
