@@ -20,6 +20,7 @@ An Android app that allows you to scan documents using your smartphone's camera,
 - [ ] Auto-adjust brightness and contrast
 - [ ] Allow image JPEG2000 compression for pdf
 - [ ] Enable pinch to zoom in camera preview
+- [ ] Use About Libraries gradle plugin
 
 ## Requirements
 
