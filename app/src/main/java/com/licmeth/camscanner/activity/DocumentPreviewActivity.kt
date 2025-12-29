@@ -41,17 +41,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.graphics.createBitmap
+import org.opencv.android.Utils
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 
 class DocumentPreviewActivity : ActivityWithPreferences() {
 
     companion object {
         private const val TAG = "DocumentPreviewActivity"
+        private const val ADAPTIVE_THRESHOLD_BLOCK_SIZE = 11
+        private const val ADAPTIVE_THRESHOLD_C = 2.0
     }
 
     private lateinit var binding: ActivityDocumentPreviewBinding
     private lateinit var originalBitmap: Bitmap
+    private lateinit var originalMat: Mat
     private var displayBitmap: Bitmap? = null
     private var currentColorProfile: ColorProfile = ColorProfile.COLOR
+    private var isUseAdaptiveThreshold: Boolean = true
 
     private var filterDialog: Dialog? = null
 
@@ -80,7 +87,8 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
 
         originalBitmap = displayBitmap!!
         binding.documentImage.setImageBitmap(displayBitmap)
-
+        originalMat = Mat(originalBitmap.height, originalBitmap.width, org.opencv.core.CvType.CV_8UC4)
+        Utils.bitmapToMat(originalBitmap, originalMat)
 
         // Setup buttons
         binding.retakeButton.setOnClickListener {
@@ -98,6 +106,12 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
         // Observe color profile preference
         lifecycleScope.launch {
             preferences.colorProfile.collect { profile -> updateColorProfile(profile) }
+        }
+
+        // Observe adaptive threshold preference
+        //TODO: Enable changing this setting from somewhere
+        lifecycleScope.launch {
+            preferences.enableAdaptiveThreshold.collect { enabled -> updateAdaptiveThresholdUsage(enabled) }
         }
     }
 
@@ -255,6 +269,14 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
         filterDialog?.window?.setGravity(Gravity.BOTTOM)
     }
 
+    private fun updateAdaptiveThresholdUsage(enabled: Boolean) {
+        isUseAdaptiveThreshold = enabled
+        // If currently in black and white mode, re-apply the filter to reflect the change
+        if (currentColorProfile == ColorProfile.BLACK_AND_WHITE) {
+            updateDisplayBitmap(ColorProfile.BLACK_AND_WHITE)
+        }
+    }
+
     private fun updateColorProfile(profile: ColorProfile) {
         if (profile == currentColorProfile) return
 
@@ -272,23 +294,29 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
         }
 
         // update displayed bitmap
+        updateDisplayBitmap(profile)
+    }
+
+    private fun updateDisplayBitmap(profile: ColorProfile) {
         when (profile) {
             ColorProfile.COLOR -> {
                 // Restore original
                 updateDisplayBitmap(originalBitmap)
             }
+
             ColorProfile.GRAYSCALE -> {
                 lifecycleScope.launch {
                     val gray = withContext(Dispatchers.Default) {
-                        toGrayscale(originalBitmap)
+                        toGrayscale(originalMat)
                     }
                     updateDisplayBitmap(gray)
                 }
             }
+
             ColorProfile.BLACK_AND_WHITE -> {
                 lifecycleScope.launch {
                     val bw = withContext(Dispatchers.Default) {
-                        toBlackAndWhite(originalBitmap)
+                        toBlackAndWhite(originalMat)
                     }
                     updateDisplayBitmap(bw)
                 }
@@ -305,44 +333,56 @@ class DocumentPreviewActivity : ActivityWithPreferences() {
         binding.documentImage.setImageBitmap(displayBitmap)
     }
 
-    private fun toGrayscale(src: Bitmap): Bitmap {
-        val width = src.width
-        val height = src.height
+    private fun toGrayscale(src: Mat): Bitmap {
+        val width = src.width()
+        val height = src.height()
         val grayBitmap = createBitmap(width, height)
 
-        val canvas = Canvas(grayBitmap)
-        val paint = Paint()
-        val colorMatrix = ColorMatrix()
-        colorMatrix.setSaturation(0f)
-        paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
-        canvas.drawBitmap(src, 0f, 0f, paint)
+        val grayMat = Mat(height, width, org.opencv.core.CvType.CV_8UC1)
+        val grayRgbaMat = Mat(height, width, org.opencv.core.CvType.CV_8UC4)
+
+        try {
+            Imgproc.cvtColor(src, grayMat, Imgproc.COLOR_BGR2GRAY)
+            Imgproc.cvtColor(grayMat, grayRgbaMat, Imgproc.COLOR_GRAY2RGBA)
+            Utils.matToBitmap(grayRgbaMat, grayBitmap)
+        } finally {
+            grayMat.release()
+            grayRgbaMat.release()
+        }
 
         return grayBitmap
     }
 
-    private fun toBlackAndWhite(src: Bitmap): Bitmap {
-        // First produce grayscale
-        val gray = toGrayscale(src)
-        val width = gray.width
-        val height = gray.height
+    private fun toBlackAndWhite(src: Mat): Bitmap {
+        val width = src.width()
+        val height = src.height()
         val bwBitmap = createBitmap(width, height)
 
-        val pixels = IntArray(width * height)
-        gray.getPixels(pixels, 0, width, 0, 0, width, height)
+        val grayMat = Mat(height, width, org.opencv.core.CvType.CV_8UC1)
+        val bwMat = Mat(height, width, org.opencv.core.CvType.CV_8UC1)
+        val bwRgbaMat = Mat(height, width, org.opencv.core.CvType.CV_8UC4)
 
-        // Simple luminance threshold
-        val threshold = 128
-        for (i in pixels.indices) {
-            val c = pixels[i]
-            val r = Color.red(c)
-            val g = Color.green(c)
-            val b = Color.blue(c)
-            val luminance = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-            pixels[i] = if (luminance >= threshold) Color.WHITE else Color.BLACK
+        try {
+            Imgproc.cvtColor(src, grayMat, Imgproc.COLOR_BGR2GRAY)
+            if (isUseAdaptiveThreshold) {
+                Imgproc.adaptiveThreshold(
+                    grayMat, bwMat, 255.0,
+                    Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C,
+                    Imgproc.THRESH_BINARY,
+                    ADAPTIVE_THRESHOLD_BLOCK_SIZE, ADAPTIVE_THRESHOLD_C
+                )
+            } else {
+                // Otsu automatic threshold
+                Imgproc.threshold(grayMat, bwMat, 0.0, 255.0, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU)
+            }
+            Imgproc.cvtColor(bwMat, bwRgbaMat, Imgproc.COLOR_GRAY2RGBA)
+            Utils.matToBitmap(bwRgbaMat, bwBitmap)
+        } finally {
+            grayMat.release()
+            bwMat.release()
+            bwRgbaMat.release()
         }
 
-        bwBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-        gray.recycle()
         return bwBitmap
     }
 }

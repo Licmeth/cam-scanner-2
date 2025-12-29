@@ -13,7 +13,7 @@ An Android app that allows you to scan documents using your smartphone's camera,
 
 - [ ] Smooth edge detection, by averaging multiple frames
 - [ ] Multi-page document scanning
-- [ ] Image filters (color, grayscale, black & white)
+- [x] Image filters (color, grayscale, black & white)
 - [ ] Allow user to manually adjust corners before saving
 - [ ] Allow user to define formats for the detection
 - [x] Add flash usage

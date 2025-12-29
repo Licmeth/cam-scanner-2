@@ -25,6 +25,7 @@ class UserPreferences(val context: Context) {
         val KEY_DEBUG_OUTPUT_LEVEL = intPreferencesKey("debug_output_level")
         val KEY_USE_FLASH = booleanPreferencesKey("use_flash")
         val KEY_COLOR_PROFILE = intPreferencesKey("color_profile")
+        val KEY_ENABLE_ADAPTIVE_THRESHOLD = booleanPreferencesKey("enable_adaptive_threshold")
     }
 
     val targetAspectRatio: Flow<DocumentAspectRatio> = dataStore.data.map { pref -> DocumentAspectRatio.of(pref[KEY_TARGET_ASPECT_RATIO] ?: DocumentAspectRatio.DIN_476_2.value) }
@@ -32,6 +33,7 @@ class UserPreferences(val context: Context) {
     val debugOutputLevel: Flow<DebugOutputLevel> = dataStore.data.map { pref -> DebugOutputLevel.of(pref[KEY_DEBUG_OUTPUT_LEVEL] ?: DebugOutputLevel.PREPROCESSED.value) }
     val useFlash: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_USE_FLASH] ?: false }
     val colorProfile: Flow<ColorProfile> = dataStore.data.map { pref -> ColorProfile.of(pref[KEY_COLOR_PROFILE] ?: ColorProfile.COLOR.value) }
+    val enableAdaptiveThreshold: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_ENABLE_ADAPTIVE_THRESHOLD] ?: true }
 
     suspend fun setTargetAspectRatio(value: DocumentAspectRatio) {
         dataStore.edit { pref -> pref[KEY_TARGET_ASPECT_RATIO] = value.value }
@@ -51,5 +53,9 @@ class UserPreferences(val context: Context) {
 
     suspend fun setColorProfile(value: ColorProfile) {
         dataStore.edit { pref -> pref[KEY_COLOR_PROFILE] = value.value }
+    }
+
+    suspend fun setEnableAdaptiveThreshold(value: Boolean) {
+        dataStore.edit { pref -> pref[KEY_ENABLE_ADAPTIVE_THRESHOLD] = value }
     }
 }
