@@ -1,8 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.devtools.ksp") version "2.1.0-1.0.29"
-    id("com.google.dagger.hilt.android") version "2.54"
+    id("com.google.devtools.ksp")
+    id("com.google.dagger.hilt.android")
 }
 
 android {
@@ -40,7 +40,11 @@ android {
     }
     
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
+    
+    kotlinOptions {
+        jvmTarget = "21"
     }
 }
 
@@ -63,9 +67,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
     
     // Hilt for Dependency Injection
-    implementation("com.google.dagger:hilt-android:2.54")
-    ksp("com.google.dagger:hilt-android-compiler:2.54")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation("com.google.dagger:hilt-android:2.50")
+    ksp("com.google.dagger:hilt-android-compiler:2.50")
+    implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     
     // CameraX
     implementation("androidx.camera:camera-core:1.5.2")
