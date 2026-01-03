@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp") version "2.1.0-1.0.29"
+    id("com.google.dagger.hilt.android") version "2.54"
 }
 
 android {
@@ -34,6 +36,11 @@ android {
 
     buildFeatures {
         viewBinding = true
+        compose = true
+    }
+    
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.15"
     }
 }
 
@@ -42,6 +49,23 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    
+    // Jetpack Compose
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.navigation:navigation-compose:2.8.5")
+    
+    // Hilt for Dependency Injection
+    implementation("com.google.dagger:hilt-android:2.54")
+    ksp("com.google.dagger:hilt-android-compiler:2.54")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     
     // CameraX
     implementation("androidx.camera:camera-core:1.5.2")
@@ -60,6 +84,10 @@ dependencies {
 
     // Data Store
     implementation("androidx.datastore:datastore-preferences:1.2.0")
+
+    // Debug
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
