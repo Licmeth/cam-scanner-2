@@ -1,10 +1,10 @@
 package com.licmeth.camscanner.activity
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import com.licmeth.camscanner.helper.UserPreferences
 
-open class ActivityWithPreferences : ComponentActivity() {
+open class ActivityWithPreferencesOld : AppCompatActivity() {
 
     protected lateinit var preferences: UserPreferences
 

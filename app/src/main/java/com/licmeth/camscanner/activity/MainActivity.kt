@@ -43,7 +43,7 @@ import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class MainActivity : ActivityWithPreferences(), NavigationView.OnNavigationItemSelectedListener {
+class MainActivity : ActivityWithPreferencesOld(), NavigationView.OnNavigationItemSelectedListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService

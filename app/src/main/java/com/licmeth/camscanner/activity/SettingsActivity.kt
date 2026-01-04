@@ -12,7 +12,7 @@ import com.licmeth.camscanner.helper.UserPreferences
 import com.licmeth.camscanner.model.DebugOutputLevel
 import kotlinx.coroutines.launch
 
-class SettingsActivity : ActivityWithPreferences() {
+class SettingsActivity : ActivityWithPreferencesOld() {
 
     private lateinit var binding: ActivitySettingsBinding
     private var isCallbacksDisabled = false
