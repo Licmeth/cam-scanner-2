@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class MainUiState(
     val isDocumentDetected: Boolean = false,
     val detectedCorners: Array<Point>? = null,
+    val relativeCorners: Array<Point>? = null,
     val statusText: String = "Detecting document...",
     val useFlash: Boolean = false,
     val targetAspectRatio: DocumentAspectRatio = DocumentAspectRatio.NONE,
@@ -33,6 +34,10 @@ data class MainUiState(
             if (other.detectedCorners == null) return false
             if (!detectedCorners.contentEquals(other.detectedCorners)) return false
         } else if (other.detectedCorners != null) return false
+        if (relativeCorners != null) {
+            if (other.relativeCorners == null) return false
+            if (!relativeCorners.contentEquals(other.relativeCorners)) return false
+        } else if (other.relativeCorners != null) return false
         if (statusText != other.statusText) return false
         if (useFlash != other.useFlash) return false
         if (targetAspectRatio != other.targetAspectRatio) return false
@@ -45,6 +50,7 @@ data class MainUiState(
     override fun hashCode(): Int {
         var result = isDocumentDetected.hashCode()
         result = 31 * result + (detectedCorners?.contentHashCode() ?: 0)
+        result = 31 * result + (relativeCorners?.contentHashCode() ?: 0)
         result = 31 * result + statusText.hashCode()
         result = 31 * result + useFlash.hashCode()
         result = 31 * result + targetAspectRatio.hashCode()
@@ -83,10 +89,11 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun setDocumentDetected(corners: Array<Point>?) {
+    fun setDetectedCorners(corners: Array<Point>?, relativeCorners: Array<Point>?) {
         _uiState.value = _uiState.value.copy(
             isDocumentDetected = corners != null,
             detectedCorners = corners,
+            relativeCorners = relativeCorners,
             statusText = if (corners != null) "Document detected" else "Detecting document..."
         )
     }

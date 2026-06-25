@@ -24,12 +24,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.licmeth.camscanner.R
 import com.licmeth.camscanner.helper.DocumentScanner
@@ -182,8 +182,8 @@ fun MainScreen(
                                 camera = cameraInstance
                                 imageCapture = imageCaptureInstance
                             },
-                            onImageAnalyzed = { corners, debugBitmap ->
-                                viewModel.setDocumentDetected(corners)
+                            onImageAnalyzed = { corners, relativeCorners, debugBitmap ->
+                                viewModel.setDetectedCorners(corners, relativeCorners)
                                 if (uiState.enableDebugOverlay) {
                                     viewModel.setDebugBitmap(debugBitmap)
                                 } else {
@@ -239,7 +239,7 @@ fun MainScreen(
                                 onClick = {
                                     captureDocument(
                                         imageCapture = imageCapture,
-                                        detectedCorners = uiState.detectedCorners,
+                                        detectedCorners = uiState.relativeCorners,
                                         targetAspectRatio = uiState.targetAspectRatio,
                                         context = context,
                                         coroutineScope = coroutineScope,
@@ -290,7 +290,7 @@ fun MainScreen(
 fun CameraPreview(
     modifier: Modifier = Modifier,
     onCameraReady: (Camera, ImageCapture) -> Unit,
-    onImageAnalyzed: (corners: Array<Point>?, debugBitmap: Bitmap?) -> Unit,
+    onImageAnalyzed: (corners: Array<Point>?, relativeCorners: Array<Point>?, debugBitmap: Bitmap?) -> Unit,
     lifecycleOwner: androidx.lifecycle.LifecycleOwner,
     cameraExecutor: java.util.concurrent.ExecutorService
 ) {
@@ -345,7 +345,7 @@ fun CameraPreview(
 private fun processImage(
     imageProxy: ImageProxy,
     context: Context,
-    onImageAnalyzed: (corners: Array<Point>?, debugBitmap: Bitmap?) -> Unit,
+    onImageAnalyzed: (corners: Array<Point>?, relativeCorners: Array<Point>?, debugBitmap: Bitmap?) -> Unit,
     previewView: PreviewView
 ) {
     try {
@@ -356,7 +356,7 @@ private fun processImage(
         
         CoroutineScope(Dispatchers.Default).launch {
             val scannerResult = DocumentScanner.detectDocument(image, com.licmeth.camscanner.model.DebugOutputLevel.PREPROCESSED)
-            var corners = scannerResult.corners
+            var corners = scannerResult.corners?.clone()
             val debugBitmap = scannerResult.debugOutput
             
             withContext(Dispatchers.Main) {
@@ -404,9 +404,9 @@ private fun processImage(
                         )
                     }.toTypedArray()
                     
-                    onImageAnalyzed(scaledCorners, rotatedDebugBitmap)
+                    onImageAnalyzed(scaledCorners, scannerResult.corners, rotatedDebugBitmap)
                 } else {
-                    onImageAnalyzed(null, rotatedDebugBitmap)
+                    onImageAnalyzed(null, null, rotatedDebugBitmap)
                 }
             }
         }
