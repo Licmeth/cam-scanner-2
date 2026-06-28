@@ -142,9 +142,13 @@ fun DocumentPreviewScreen(
             if (uiState.showFilterDialog) {
                 FilterDialog(
                     currentProfile = uiState.colorProfile,
+                    flattenBackground = uiState.flattenBackground,
                     onProfileSelected = { profile ->
                         viewModel.setColorProfile(profile)
                         viewModel.hideFilterDialog()
+                    },
+                    onFlattenBackgroundToggled = { enabled ->
+                        viewModel.setFlattenBackground(enabled)
                     },
                     onDismiss = { viewModel.hideFilterDialog() }
                 )
@@ -156,7 +160,9 @@ fun DocumentPreviewScreen(
 @Composable
 fun FilterDialog(
     currentProfile: ColorProfile,
+    flattenBackground: Boolean,
     onProfileSelected: (ColorProfile) -> Unit,
+    onFlattenBackgroundToggled: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -185,6 +191,22 @@ fun FilterDialog(
                             }
                         )
                     }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Flatten Background")
+                    Switch(
+                        checked = flattenBackground,
+                        onCheckedChange = onFlattenBackgroundToggled
+                    )
                 }
             }
         },
