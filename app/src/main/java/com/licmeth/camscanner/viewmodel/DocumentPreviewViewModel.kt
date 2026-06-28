@@ -12,7 +12,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.opencv.android.Utils
+import org.opencv.core.Core
+import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Scalar
+import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import javax.inject.Inject
 
@@ -21,6 +25,7 @@ data class DocumentPreviewUiState(
     val displayBitmap: Bitmap? = null,
     val colorProfile: ColorProfile = ColorProfile.COLOR,
     val isAdaptiveThreshold: Boolean = true,
+    val flattenBackground: Boolean = false,
     val isSaving: Boolean = false,
     val showFilterDialog: Boolean = false
 )
@@ -38,23 +43,31 @@ class DocumentPreviewViewModel @Inject constructor(
     companion object {
         private const val ADAPTIVE_THRESHOLD_BLOCK_SIZE = 11
         private const val ADAPTIVE_THRESHOLD_C = 2.0
+        private const val FLATTEN_BLUR_SIGMA = 50.0
     }
 
     init {
         // Observe preferences
         viewModelScope.launch {
             preferences.colorProfile.collect { profile ->
-                applyColorProfile(profile)
+                _uiState.value = _uiState.value.copy(colorProfile = profile)
+                reapplyEffects()
             }
         }
 
         viewModelScope.launch {
             preferences.enableAdaptiveThreshold.collect { enabled ->
                 _uiState.value = _uiState.value.copy(isAdaptiveThreshold = enabled)
-                // Re-apply filter if in B&W mode
                 if (_uiState.value.colorProfile == ColorProfile.BLACK_AND_WHITE) {
-                    applyColorProfile(ColorProfile.BLACK_AND_WHITE)
+                    reapplyEffects()
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            preferences.flattenBackground.collect { enabled ->
+                _uiState.value = _uiState.value.copy(flattenBackground = enabled)
+                reapplyEffects()
             }
         }
     }
@@ -74,6 +87,8 @@ class DocumentPreviewViewModel @Inject constructor(
 
         originalMat = Mat(bitmap.height, bitmap.width, org.opencv.core.CvType.CV_8UC4)
         Utils.bitmapToMat(bitmap, originalMat)
+
+        reapplyEffects()
     }
 
     fun showFilterDialog() {
@@ -90,27 +105,69 @@ class DocumentPreviewViewModel @Inject constructor(
         }
     }
 
-    private fun applyColorProfile(profile: ColorProfile) {
-        if (profile == _uiState.value.colorProfile) return
+    fun setFlattenBackground(enabled: Boolean) {
+        viewModelScope.launch {
+            preferences.setFlattenBackground(enabled)
+        }
+    }
 
-        _uiState.value = _uiState.value.copy(colorProfile = profile)
-
+    private fun reapplyEffects() {
         val original = _uiState.value.originalBitmap ?: return
         val mat = originalMat ?: return
+        val state = _uiState.value
 
-        when (profile) {
+        // Step 1: Optionally flatten and denoise background
+        val flattenedMat: Mat? = if (state.flattenBackground) flattenBackground(mat) else null
+        val workingMat = flattenedMat ?: mat
+
+        // Step 2: Apply color profile
+        val resultBitmap = when (state.colorProfile) {
             ColorProfile.COLOR -> {
-                updateDisplayBitmap(original)
+                if (flattenedMat != null) {
+                    val b = createBitmap(workingMat.width(), workingMat.height())
+                    Utils.matToBitmap(workingMat, b)
+                    b
+                } else {
+                    original
+                }
             }
-            ColorProfile.GRAYSCALE -> {
-                val gray = toGrayscale(mat)
-                updateDisplayBitmap(gray)
-            }
-            ColorProfile.BLACK_AND_WHITE -> {
-                val bw = toBlackAndWhite(mat)
-                updateDisplayBitmap(bw)
-            }
+            ColorProfile.GRAYSCALE -> toGrayscale(workingMat)
+            ColorProfile.BLACK_AND_WHITE -> toBlackAndWhite(workingMat)
         }
+
+        flattenedMat?.release()
+        updateDisplayBitmap(resultBitmap)
+    }
+
+    /**
+     * Flattens uneven background illumination using OpenCV to make the document
+     * background fully white. Estimates the background via a large Gaussian blur
+     * and normalises each pixel by its local background estimate.
+     */
+    private fun flattenBackground(src: Mat): Mat {
+        val srcFloat = Mat()
+        src.convertTo(srcFloat, CvType.CV_32F)
+
+        // Estimate background illumination with a large-radius Gaussian blur
+        val background = Mat()
+        Imgproc.GaussianBlur(srcFloat, background, Size(0.0, 0.0), FLATTEN_BLUR_SIGMA)
+        // Add a small epsilon to avoid division by zero
+        Core.add(background, Scalar(1.0, 1.0, 1.0, 1.0), background)
+
+        // Normalise: result = (src / background) * 255
+        val normalized = Mat()
+        Core.divide(srcFloat, background, normalized, 255.0)
+        Core.min(normalized, Scalar(255.0, 255.0, 255.0, 255.0), normalized)
+        Core.max(normalized, Scalar(0.0, 0.0, 0.0, 0.0), normalized)
+
+        val output = Mat()
+        normalized.convertTo(output, CvType.CV_8U)
+
+        srcFloat.release()
+        background.release()
+        normalized.release()
+
+        return output
     }
 
     private fun updateDisplayBitmap(newBitmap: Bitmap) {

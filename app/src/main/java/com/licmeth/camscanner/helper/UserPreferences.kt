@@ -26,6 +26,7 @@ class UserPreferences(val context: Context) {
         val KEY_USE_FLASH = booleanPreferencesKey("use_flash")
         val KEY_COLOR_PROFILE = intPreferencesKey("color_profile")
         val KEY_ENABLE_ADAPTIVE_THRESHOLD = booleanPreferencesKey("enable_adaptive_threshold")
+        val KEY_FLATTEN_BACKGROUND = booleanPreferencesKey("flatten_background")
     }
 
     val targetAspectRatio: Flow<DocumentAspectRatio> = dataStore.data.map { pref -> DocumentAspectRatio.of(pref[KEY_TARGET_ASPECT_RATIO] ?: DocumentAspectRatio.DIN_476_2.value) }
@@ -34,6 +35,7 @@ class UserPreferences(val context: Context) {
     val useFlash: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_USE_FLASH] ?: false }
     val colorProfile: Flow<ColorProfile> = dataStore.data.map { pref -> ColorProfile.of(pref[KEY_COLOR_PROFILE] ?: ColorProfile.COLOR.value) }
     val enableAdaptiveThreshold: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_ENABLE_ADAPTIVE_THRESHOLD] ?: true }
+    val flattenBackground: Flow<Boolean> = dataStore.data.map { pref -> pref[KEY_FLATTEN_BACKGROUND] ?: false }
 
     suspend fun setTargetAspectRatio(value: DocumentAspectRatio) {
         dataStore.edit { pref -> pref[KEY_TARGET_ASPECT_RATIO] = value.value }
@@ -57,5 +59,9 @@ class UserPreferences(val context: Context) {
 
     suspend fun setEnableAdaptiveThreshold(value: Boolean) {
         dataStore.edit { pref -> pref[KEY_ENABLE_ADAPTIVE_THRESHOLD] = value }
+    }
+
+    suspend fun setFlattenBackground(value: Boolean) {
+        dataStore.edit { pref -> pref[KEY_FLATTEN_BACKGROUND] = value }
     }
 }
