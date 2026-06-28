@@ -124,9 +124,9 @@ class DocumentPreviewViewModel @Inject constructor(
         val resultBitmap = when (state.colorProfile) {
             ColorProfile.COLOR -> {
                 if (flattenedMat != null) {
-                    val b = createBitmap(workingMat.width(), workingMat.height())
-                    Utils.matToBitmap(workingMat, b)
-                    b
+                    val flattenedBitmap = createBitmap(workingMat.width(), workingMat.height())
+                    Utils.matToBitmap(workingMat, flattenedBitmap)
+                    flattenedBitmap
                 } else {
                     original
                 }
@@ -157,11 +157,11 @@ class DocumentPreviewViewModel @Inject constructor(
         // Normalise: result = (src / background) * 255
         val normalized = Mat()
         Core.divide(srcFloat, background, normalized, 255.0)
-        Core.min(normalized, Scalar(255.0, 255.0, 255.0, 255.0), normalized)
         Core.max(normalized, Scalar(0.0, 0.0, 0.0, 0.0), normalized)
+        Core.min(normalized, Scalar(255.0, 255.0, 255.0, 255.0), normalized)
 
         val output = Mat()
-        normalized.convertTo(output, CvType.CV_8U)
+        normalized.convertTo(output, CvType.CV_8UC4)
 
         srcFloat.release()
         background.release()
